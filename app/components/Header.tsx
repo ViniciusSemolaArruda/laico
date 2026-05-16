@@ -20,7 +20,6 @@ export default function Header() {
     "Novidades",
     "Mais Vendidos",
     "Artigos Religiosos",
-    "Aço Inox 316L",
     "Acessórios Femininos",
     "Chaveiro",
     "Acessórios & Embalagem",
