@@ -658,14 +658,26 @@ export async function POST(
       );
 
       return NextResponse.json(
-        {
-          error:
-            "Assinatura inválida.",
-        },
-        {
-          status: 401,
-        }
-      );
+  {
+    error:
+      "Assinatura inválida.",
+
+    reason:
+      error.reason,
+
+    hasSignature:
+      Boolean(xSignature),
+
+    hasRequestId:
+      Boolean(xRequestId),
+
+    hasDataId:
+      Boolean(queryDataId),
+  },
+  {
+    status: 401,
+  }
+);
     }
 
     console.error(
