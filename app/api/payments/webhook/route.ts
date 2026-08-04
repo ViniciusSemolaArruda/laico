@@ -181,8 +181,9 @@ export async function POST(
 
   try {
     const webhookSecret =
-      process.env
-        .MERCADO_PAGO_WEBHOOK_SECRET;
+  process.env
+    .MERCADO_PAGO_WEBHOOK_SECRET
+    ?.trim();
 
     const accessToken =
       process.env
