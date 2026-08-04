@@ -8,6 +8,9 @@ import {
 
 import { prisma } from "@/lib/prisma";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 type MercadoPagoWebhookBody = {
   id?: string | number;
   type?: string;
@@ -20,6 +23,9 @@ type MercadoPagoWebhookBody = {
 
   data?: {
     id?: string;
+    external_reference?: string;
+    status?: string;
+    status_detail?: string;
   };
 };
 
@@ -33,15 +39,18 @@ type DatabasePaymentStatus =
 type DatabaseOrderStatus =
   | "PENDING"
   | "PAID"
+  | "PROCESSING"
+  | "SHIPPED"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
   | "CANCELED"
-  | "REFUNDED";
+  | "REFUNDED"
+  | "RETURNED";
 
 function normalizeStatus(
   status: string | null | undefined
-) {
-  return status
-    ?.trim()
-    .toLowerCase() || "";
+): string {
+  return status?.trim().toLowerCase() || "";
 }
 
 function getPaymentStatus(
@@ -53,10 +62,12 @@ function getPaymentStatus(
       return "APPROVED";
 
     case "rejected":
+    case "failed":
       return "REJECTED";
 
     case "cancelled":
     case "canceled":
+    case "expired":
       return "CANCELED";
 
     case "refunded":
@@ -91,8 +102,10 @@ function getOrderStatus(
   if (
     paymentStatus === "cancelled" ||
     paymentStatus === "canceled" ||
+    paymentStatus === "expired" ||
     mercadoPagoOrderStatus === "cancelled" ||
-    mercadoPagoOrderStatus === "canceled"
+    mercadoPagoOrderStatus === "canceled" ||
+    mercadoPagoOrderStatus === "expired"
   ) {
     return "CANCELED";
   }
@@ -123,7 +136,9 @@ function getHistoryContent(
       return {
         title: "Pagamento cancelado",
         message:
-          "O pagamento foi cancelado.",
+          statusDetail === "expired"
+            ? "O prazo para pagamento expirou."
+            : "O pagamento foi cancelado.",
       };
 
     case "PENDING":
@@ -137,9 +152,9 @@ function getHistoryContent(
   }
 }
 
-function isTerminalOrderStatus(
+function isProtectedOrderStatus(
   status: string
-) {
+): status is DatabaseOrderStatus {
   return [
     "PAID",
     "PROCESSING",
@@ -152,47 +167,34 @@ function isTerminalOrderStatus(
   ].includes(status);
 }
 
-export async function POST(
-  request: Request
-) {
-  const requestUrl = new URL(
-    request.url
-  );
+export async function POST(request: Request) {
+  const requestUrl = new URL(request.url);
 
+  /*
+   * O ID usado na assinatura deve vir do
+   * parâmetro data.id da URL.
+   */
   const queryDataId =
-    requestUrl.searchParams.get(
-      "data.id"
-    );
+    requestUrl.searchParams.get("data.id");
 
   const notificationType =
-    requestUrl.searchParams.get(
-      "type"
-    );
+    requestUrl.searchParams.get("type");
 
   const xSignature =
-    request.headers.get(
-      "x-signature"
-    );
+    request.headers.get("x-signature");
 
   const xRequestId =
-    request.headers.get(
-      "x-request-id"
-    );
+    request.headers.get("x-request-id");
 
   try {
     const webhookSecret =
-  process.env
-    .MERCADO_PAGO_WEBHOOK_SECRET
-    ?.trim();
+      process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim();
 
     const accessToken =
-      process.env
-        .MERCADO_PAGO_ACCESS_TOKEN;
+      process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
 
     const isTestMode =
-      process.env
-        .MERCADO_PAGO_TEST_MODE ===
-      "true";
+      process.env.MERCADO_PAGO_TEST_MODE === "true";
 
     if (!webhookSecret) {
       console.error(
@@ -201,8 +203,7 @@ export async function POST(
 
       return NextResponse.json(
         {
-          error:
-            "Webhook não configurado.",
+          error: "Webhook não configurado.",
         },
         {
           status: 500,
@@ -217,8 +218,7 @@ export async function POST(
 
       return NextResponse.json(
         {
-          error:
-            "Mercado Pago não configurado.",
+          error: "Mercado Pago não configurado.",
         },
         {
           status: 500,
@@ -226,15 +226,10 @@ export async function POST(
       );
     }
 
-    /*
-     * O Mercado Pago coloca o ID assinado
-     * no parâmetro data.id da URL.
-     */
     if (!queryDataId) {
       return NextResponse.json(
         {
-          error:
-            "data.id não informado.",
+          error: "data.id não informado.",
         },
         {
           status: 400,
@@ -242,43 +237,50 @@ export async function POST(
       );
     }
 
+    if (!xSignature || !xRequestId) {
+      return NextResponse.json(
+        {
+          error:
+            "Cabeçalhos de autenticação não informados.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
     /*
- * O Mercado Pago calcula a assinatura usando
- * IDs alfanuméricos em letras minúsculas.
- *
- * Mantemos queryDataId original para consultar
- * a Order posteriormente.
- */
-const signatureDataId =
-  queryDataId.toLowerCase();
+     * Não transforme queryDataId em minúsculas.
+     *
+     * A partir do SDK 3.2, o Mercado Pago
+     * preserva corretamente letras maiúsculas
+     * e minúsculas na assinatura.
+     */
+    WebhookSignatureValidator.validate({
+      xSignature,
+      xRequestId,
+      dataId: queryDataId,
+      secret: webhookSecret,
+    });
 
-WebhookSignatureValidator.validate({
-  xSignature,
-  xRequestId,
-  dataId: signatureDataId,
-  secret: webhookSecret.trim(),
-});
-
-    let body: MercadoPagoWebhookBody =
-      {};
+    let body: MercadoPagoWebhookBody = {};
 
     try {
       body =
         (await request.json()) as MercadoPagoWebhookBody;
     } catch {
       /*
-       * O ID principal já está na URL.
-       * O corpo pode estar vazio em algumas
-       * simulações.
+       * Algumas notificações podem ter corpo
+       * vazio. O ID principal já foi recebido
+       * e validado pela URL.
        */
     }
 
-    const bodyDataId =
-      body.data?.id;
+    const bodyDataId = body.data?.id;
 
     /*
-     * Se o corpo tiver um ID diferente do ID
-     * assinado na URL, a requisição é recusada.
+     * Impede que um ID diferente seja inserido
+     * no corpo depois da validação da URL.
      */
     if (
       bodyDataId &&
@@ -289,14 +291,13 @@ WebhookSignatureValidator.validate({
         {
           queryDataId,
           bodyDataId,
-          xRequestId,
+          requestId: xRequestId,
         }
       );
 
       return NextResponse.json(
         {
-          error:
-            "Identificador inconsistente.",
+          error: "Identificador inconsistente.",
         },
         {
           status: 400,
@@ -305,15 +306,14 @@ WebhookSignatureValidator.validate({
     }
 
     const eventType =
-      body.type ||
-      notificationType;
+      body.type || notificationType;
 
     /*
-     * Esta rota processa somente eventos
-     * da API Orders.
+     * Somente notificações de Orders são
+     * processadas nesta rota.
      *
-     * Outros eventos recebem 200 para o
-     * Mercado Pago não ficar repetindo.
+     * Outros eventos retornam 200 para evitar
+     * novas tentativas desnecessárias.
      */
     if (
       eventType &&
@@ -342,9 +342,11 @@ WebhookSignatureValidator.validate({
       );
 
     /*
-     * Nunca confiamos no status recebido
-     * pelo webhook. Consultamos diretamente
-     * a ordem na API do Mercado Pago.
+     * O status recebido no corpo não é usado
+     * diretamente.
+     *
+     * Consultamos a Order na API oficial do
+     * Mercado Pago depois de validar a assinatura.
      */
     const mercadoPagoResponse =
       await mercadoPagoOrder.get({
@@ -352,13 +354,15 @@ WebhookSignatureValidator.validate({
       });
 
     const externalReference =
-      mercadoPagoResponse
-        .external_reference;
+      mercadoPagoResponse.external_reference;
 
     if (!externalReference) {
       console.error(
         "Ordem do Mercado Pago sem external_reference:",
-        queryDataId
+        {
+          mercadoPagoOrderId: queryDataId,
+          requestId: xRequestId,
+        }
       );
 
       return NextResponse.json(
@@ -385,40 +389,39 @@ WebhookSignatureValidator.validate({
 
     if (!order) {
       /*
-       * Retornamos 200 porque esta ordem pode
-       * pertencer a outro sistema conectado à
-       * mesma conta do Mercado Pago.
+       * A Order pode pertencer a outro sistema
+       * conectado à mesma conta.
+       *
+       * Retornamos 200 para confirmar o
+       * recebimento sem alterar o banco.
        */
       console.warn(
-        "Pedido local não encontrado para o webhook:",
+        "Pedido local não encontrado:",
         {
           externalReference,
-          mercadoPagoOrderId:
-            queryDataId,
+          mercadoPagoOrderId: queryDataId,
+          requestId: xRequestId,
         }
       );
 
       return NextResponse.json({
         received: true,
         ignored: true,
-        reason:
-          "Pedido local não encontrado.",
+        reason: "Pedido local não encontrado.",
       });
     }
 
     /*
-     * Impede que uma ordem do Mercado Pago
-     * atualize o pedido local errado.
+     * Garante que a Order recebida pertence
+     * realmente ao pagamento salvo no pedido.
      */
     if (
-      order.payment
-        ?.mercadoPagoPreferenceId &&
-      order.payment
-        .mercadoPagoPreferenceId !==
+      order.payment?.mercadoPagoPreferenceId &&
+      order.payment.mercadoPagoPreferenceId !==
         queryDataId
     ) {
       console.error(
-        "Ordem do Mercado Pago não corresponde ao pedido:",
+        "Ordem do Mercado Pago incompatível:",
         {
           orderId: order.id,
           receivedMercadoPagoOrderId:
@@ -426,6 +429,7 @@ WebhookSignatureValidator.validate({
           savedMercadoPagoOrderId:
             order.payment
               .mercadoPagoPreferenceId,
+          requestId: xRequestId,
         }
       );
 
@@ -441,8 +445,7 @@ WebhookSignatureValidator.validate({
     }
 
     const paymentResponse =
-      mercadoPagoResponse
-        .transactions
+      mercadoPagoResponse.transactions
         ?.payments?.[0];
 
     const mercadoPagoOrderStatus =
@@ -462,14 +465,11 @@ WebhookSignatureValidator.validate({
 
     const paymentStatusDetail =
       paymentResponse?.status_detail ||
-      mercadoPagoResponse
-        .status_detail ||
+      mercadoPagoResponse.status_detail ||
       null;
 
-    const databasePaymentStatus =
-      getPaymentStatus(
-        effectiveStatus
-      );
+    let databasePaymentStatus =
+      getPaymentStatus(effectiveStatus);
 
     let databaseOrderStatus =
       getOrderStatus(
@@ -478,54 +478,60 @@ WebhookSignatureValidator.validate({
       );
 
     /*
-     * Uma notificação pendente ou atrasada
-     * nunca pode rebaixar um pedido que já
-     * foi pago, enviado ou entregue.
+     * Uma notificação atrasada ou pendente
+     * não pode rebaixar um pagamento aprovado.
      */
     if (
-      databaseOrderStatus ===
-        "PENDING" &&
-      isTerminalOrderStatus(
-        order.status
+      order.payment?.status === "APPROVED" &&
+      (
+        databasePaymentStatus === "PENDING" ||
+        databasePaymentStatus === "REJECTED"
       )
     ) {
+      databasePaymentStatus = "APPROVED";
+    }
+
+    /*
+     * Uma notificação pendente não pode rebaixar
+     * um pedido pago, enviado, entregue,
+     * cancelado ou reembolsado.
+     */
+    if (
+      databaseOrderStatus === "PENDING" &&
+      isProtectedOrderStatus(order.status)
+    ) {
       databaseOrderStatus =
-        order.status as DatabaseOrderStatus;
+        order.status;
     }
 
     const paymentMethodId =
-      paymentResponse
-        ?.payment_method?.id ||
-      order.payment
-        ?.paymentMethod ||
+      paymentResponse?.payment_method?.id ||
+      order.payment?.paymentMethod ||
       null;
 
     const paymentId =
       paymentResponse?.id
-        ? String(
-            paymentResponse.id
-          )
+        ? String(paymentResponse.id)
         : order.payment
             ?.mercadoPagoPaymentId ||
           null;
 
     const ticketUrl =
-      paymentResponse
-        ?.payment_method?.ticket_url ||
+      paymentResponse?.payment_method
+        ?.ticket_url ||
       order.payment?.paymentUrl ||
       null;
 
     const orderStatusChanged =
-      order.status !==
-      databaseOrderStatus;
+      order.status !== databaseOrderStatus;
 
     const paymentStatusChanged =
       order.payment?.status !==
       databasePaymentStatus;
 
     /*
-     * Se nada mudou, confirmamos o webhook,
-     * mas não criamos histórico duplicado.
+     * Confirma notificações repetidas sem
+     * criar históricos duplicados.
      */
     if (
       !orderStatusChanged &&
@@ -551,23 +557,18 @@ WebhookSignatureValidator.validate({
       },
 
       data: {
-        status:
-          databaseOrderStatus,
+        status: databaseOrderStatus,
 
         expiresAt:
-          databaseOrderStatus ===
-          "PAID"
+          databaseOrderStatus === "PAID"
             ? null
             : order.expiresAt,
 
         payment: {
           upsert: {
             create: {
-              provider:
-                "mercadopago",
-
-              status:
-                databasePaymentStatus,
+              provider: "mercadopago",
+              status: databasePaymentStatus,
 
               mercadoPagoPaymentId:
                 paymentId,
@@ -583,11 +584,8 @@ WebhookSignatureValidator.validate({
             },
 
             update: {
-              provider:
-                "mercadopago",
-
-              status:
-                databasePaymentStatus,
+              provider: "mercadopago",
+              status: databasePaymentStatus,
 
               mercadoPagoPaymentId:
                 paymentId,
@@ -611,11 +609,8 @@ WebhookSignatureValidator.validate({
                   status:
                     databaseOrderStatus,
 
-                  title:
-                    history.title,
-
-                  message:
-                    history.message,
+                  title: history.title,
+                  message: history.message,
                 },
               }
             : undefined,
@@ -625,17 +620,17 @@ WebhookSignatureValidator.validate({
     console.log(
       "Webhook do Mercado Pago processado:",
       {
-        requestId:
-          xRequestId,
-        orderId:
-          order.id,
+        requestId: xRequestId,
+        orderId: order.id,
         mercadoPagoOrderId:
           queryDataId,
-        previousStatus:
+        previousOrderStatus:
           order.status,
-        newStatus:
+        newOrderStatus:
           databaseOrderStatus,
-        paymentStatus:
+        previousPaymentStatus:
+          order.payment?.status || null,
+        newPaymentStatus:
           databasePaymentStatus,
         statusDetail:
           paymentStatusDetail,
@@ -646,8 +641,7 @@ WebhookSignatureValidator.validate({
       received: true,
       updated: true,
       orderId: order.id,
-      status:
-        databaseOrderStatus,
+      status: databaseOrderStatus,
     });
   } catch (error) {
     if (
@@ -657,34 +651,26 @@ WebhookSignatureValidator.validate({
       console.error(
         "Assinatura inválida no webhook do Mercado Pago:",
         {
-          reason:
-            error.reason,
-          requestId:
-            xRequestId,
+          reason: error.reason,
+          requestId: xRequestId,
+          hasSignature:
+            Boolean(xSignature),
+          hasRequestId:
+            Boolean(xRequestId),
+          hasDataId:
+            Boolean(queryDataId),
         }
       );
 
       return NextResponse.json(
-  {
-    error:
-      "Assinatura inválida.",
-
-    reason:
-      error.reason,
-
-    hasSignature:
-      Boolean(xSignature),
-
-    hasRequestId:
-      Boolean(xRequestId),
-
-    hasDataId:
-      Boolean(queryDataId),
-  },
-  {
-    status: 401,
-  }
-);
+        {
+          error: "Assinatura inválida.",
+          reason: error.reason,
+        },
+        {
+          status: 401,
+        }
+      );
     }
 
     console.error(
@@ -693,8 +679,8 @@ WebhookSignatureValidator.validate({
     );
 
     /*
-     * Retornamos 500 para o Mercado Pago
-     * tentar enviar a notificação novamente.
+     * O Mercado Pago tentará enviar novamente
+     * quando receber um erro 500.
      */
     return NextResponse.json(
       {
@@ -710,8 +696,7 @@ WebhookSignatureValidator.validate({
 
 export async function GET() {
   return NextResponse.json({
-    service:
-      "Mercado Pago webhook",
+    service: "Mercado Pago webhook",
     status: "online",
   });
 }
