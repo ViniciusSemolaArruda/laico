@@ -35,7 +35,7 @@ export async function POST() {
     return NextResponse.json(
       {
         error:
-          "Não autorizado.",
+  "Você não tem permissão para fazer isso! Acesso negado.",
       },
       {
         status: 401,

@@ -265,16 +265,15 @@ export async function verifyOrderAccessToken({
       expiresAt:
         accessToken.expiresAt,
     };
-  } catch (error) {
-    console.error(
-      "Falha ao validar acesso ao pedido:",
-      error instanceof Error
-        ? error.name
-        : "UnknownError"
-    );
-
-    return null;
-  }
+  } catch {
+  /*
+   * Token ausente, inválido, expirado ou
+   * revogado é tratado como acesso negado.
+   * Não registramos o token nem criamos
+   * logs para cada tentativa inválida.
+   */
+  return null;
+}
 }
 
 export async function revokeOrderAccessToken({

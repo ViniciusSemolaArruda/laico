@@ -1,31 +1,78 @@
 import { NextResponse } from "next/server";
 
-export async function GET() {
-  const response = NextResponse.redirect(new URL("/admin/login", process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"));
-
-  response.cookies.set("admin_session", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control":
+        "private, no-store, no-cache, must-revalidate",
+      Pragma: "no-cache",
+      "X-Content-Type-Options":
+        "nosniff",
+    },
   });
-
-  return response;
 }
 
-export async function POST() {
-  const response = NextResponse.json({
-    success: true,
-    message: "Logout realizado com sucesso.",
-  });
+function isAllowedOrigin(
+  request: Request
+) {
+  const origin =
+    request.headers.get("origin");
 
-  response.cookies.set("admin_session", "", {
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    const requestOrigin =
+      new URL(request.url).origin;
+
+    return origin === requestOrigin;
+  } catch {
+    return false;
+  }
+}
+
+export async function POST(
+  request: Request
+) {
+  if (!isAllowedOrigin(request)) {
+    return jsonResponse(
+      {
+        error:
+          "Você não tem permissão para fazer isso! Acesso negado.",
+      },
+      403
+    );
+  }
+
+  const response =
+    jsonResponse({
+      success: true,
+      message:
+        "Logout realizado com sucesso.",
+    });
+
+  /*
+   * As opções precisam corresponder às
+   * utilizadas na criação do cookie.
+   */
+  response.cookies.set({
+    name: "admin_session",
+    value: "",
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+
+    secure:
+      process.env.NODE_ENV ===
+      "production",
+
+    sameSite: "strict",
     path: "/",
     maxAge: 0,
+    expires: new Date(0),
   });
 
   return response;

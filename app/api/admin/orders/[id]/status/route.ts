@@ -14,6 +14,14 @@ type OrderStatus =
   | "REFUNDED"
   | "RETURNED";
 
+type AdminEditableStatus =
+  | "PROCESSING"
+  | "SHIPPED"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  | "CANCELED"
+  | "RETURNED";
+
 type Props = {
   params: Promise<{
     id: string;
@@ -28,36 +36,93 @@ type UpdateOrderBody = {
   message?: unknown;
 };
 
-const allowedStatuses: readonly OrderStatus[] =
-  [
-    "PENDING",
-    "PAID",
+const ACCESS_DENIED_MESSAGE =
+  "Você não tem permissão para fazer isso! Acesso negado.";
+
+const MAXIMUM_REQUEST_SIZE = 10_000;
+
+const adminEditableStatuses:
+  readonly AdminEditableStatus[] = [
     "PROCESSING",
     "SHIPPED",
     "OUT_FOR_DELIVERY",
     "DELIVERED",
     "CANCELED",
-    "REFUNDED",
     "RETURNED",
   ];
 
-const statusTitles: Record<
+const allowedTransitions: Record<
   OrderStatus,
+  readonly AdminEditableStatus[]
+> = {
+  /*
+   * PAID e REFUNDED são controlados pelo
+   * Mercado Pago e nunca são definidos aqui.
+   */
+  PENDING: ["CANCELED"],
+
+  PAID: ["PROCESSING"],
+
+  PROCESSING: ["SHIPPED"],
+
+  SHIPPED: [
+    "OUT_FOR_DELIVERY",
+    "DELIVERED",
+    "RETURNED",
+  ],
+
+  OUT_FOR_DELIVERY: [
+    "DELIVERED",
+    "RETURNED",
+  ],
+
+  DELIVERED: ["RETURNED"],
+
+  CANCELED: [],
+
+  REFUNDED: [],
+
+  RETURNED: [],
+};
+
+const statusTitles: Record<
+  AdminEditableStatus,
   string
 > = {
-  PENDING: "Pedido criado",
-  PAID: "Pagamento aprovado",
   PROCESSING:
     "Pedido em preparação",
-  SHIPPED: "Pedido enviado",
+
+  SHIPPED:
+    "Pedido enviado",
+
   OUT_FOR_DELIVERY:
     "Saiu para entrega",
-  DELIVERED: "Pedido entregue",
-  CANCELED: "Pedido cancelado",
-  REFUNDED:
-    "Pedido reembolsado",
-  RETURNED: "Pedido devolvido",
+
+  DELIVERED:
+    "Pedido entregue",
+
+  CANCELED:
+    "Pedido cancelado",
+
+  RETURNED:
+    "Pedido devolvido",
 };
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control":
+        "private, no-store, no-cache, must-revalidate",
+      Pragma: "no-cache",
+      "X-Content-Type-Options":
+        "nosniff",
+    },
+  });
+}
 
 function normalizeText(
   value: unknown,
@@ -85,15 +150,32 @@ function normalizeNullableText(
   return normalized || null;
 }
 
-function isOrderStatus(
+function isValidOrderId(
+  orderId: string
+) {
+  return /^[a-zA-Z0-9_-]{10,100}$/.test(
+    orderId
+  );
+}
+
+function isAdminEditableStatus(
   value: unknown
-): value is OrderStatus {
+): value is AdminEditableStatus {
   return (
     typeof value === "string" &&
-    allowedStatuses.includes(
-      value as OrderStatus
+    adminEditableStatuses.includes(
+      value as AdminEditableStatus
     )
   );
+}
+
+function isAllowedTransition(
+  currentStatus: OrderStatus,
+  nextStatus: AdminEditableStatus
+) {
+  return allowedTransitions[
+    currentStatus
+  ].includes(nextStatus);
 }
 
 function isValidTrackingUrl(
@@ -106,26 +188,20 @@ function isValidTrackingUrl(
   try {
     const url = new URL(value);
 
-    return (
-      url.protocol ===
-        "https:" ||
-      url.protocol === "http:"
-    );
+    /*
+     * Links exibidos ao comprador devem
+     * utilizar HTTPS.
+     */
+    return url.protocol === "https:";
   } catch {
     return false;
   }
 }
 
 function getDefaultMessage(
-  status: OrderStatus
+  status: AdminEditableStatus
 ) {
   switch (status) {
-    case "PENDING":
-      return "O pedido está aguardando a confirmação do pagamento.";
-
-    case "PAID":
-      return "O pagamento foi confirmado.";
-
     case "PROCESSING":
       return "O pedido está sendo separado e preparado para envio.";
 
@@ -141,12 +217,23 @@ function getDefaultMessage(
     case "CANCELED":
       return "O pedido foi cancelado.";
 
-    case "REFUNDED":
-      return "O pagamento do pedido foi reembolsado.";
-
     case "RETURNED":
       return "O pedido foi devolvido.";
   }
+}
+
+function isRecordNotFoundError(
+  error: unknown
+) {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("code" in error)
+  ) {
+    return false;
+  }
+
+  return error.code === "P2025";
 }
 
 export async function PATCH(
@@ -157,115 +244,126 @@ export async function PATCH(
     await getAdminSession();
 
   if (!session) {
-    return NextResponse.json(
+    return jsonResponse(
       {
         error:
-          "Não autorizado.",
+          ACCESS_DENIED_MESSAGE,
       },
-      {
-        status: 401,
-      }
+      401
     );
   }
 
   try {
+    const contentType =
+      request.headers.get(
+        "content-type"
+      );
+
+    if (
+      !contentType
+        ?.toLowerCase()
+        .includes(
+          "application/json"
+        )
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "Formato da solicitação inválido.",
+        },
+        415
+      );
+    }
+
+    const contentLength = Number(
+      request.headers.get(
+        "content-length"
+      ) || 0
+    );
+
+    if (
+      Number.isFinite(
+        contentLength
+      ) &&
+      contentLength >
+        MAXIMUM_REQUEST_SIZE
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "A solicitação é muito grande.",
+        },
+        413
+      );
+    }
+
     const { id } =
       await params;
 
     const orderId =
       normalizeText(id, 100);
 
-    if (!orderId) {
-      return NextResponse.json(
+    if (
+      !orderId ||
+      !isValidOrderId(orderId)
+    ) {
+      return jsonResponse(
         {
           error:
-            "Pedido não informado.",
+            "Pedido inválido.",
         },
-        {
-          status: 400,
-        }
+        400
       );
     }
 
-    const body =
-      (await request.json()) as UpdateOrderBody;
+    let body: UpdateOrderBody;
+
+    try {
+      const rawBody =
+        await request.text();
+
+      if (
+        rawBody.length >
+        MAXIMUM_REQUEST_SIZE
+      ) {
+        return jsonResponse(
+          {
+            error:
+              "A solicitação é muito grande.",
+          },
+          413
+        );
+      }
+
+      body = JSON.parse(
+        rawBody
+      ) as UpdateOrderBody;
+    } catch {
+      return jsonResponse(
+        {
+          error:
+            "Solicitação inválida.",
+        },
+        400
+      );
+    }
 
     if (
-      !isOrderStatus(
+      !isAdminEditableStatus(
         body.status
       )
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
-            "Status do pedido inválido.",
+            "Esse status não pode ser definido manualmente.",
         },
-        {
-          status: 400,
-        }
+        400
       );
     }
 
-    const status =
+    const nextStatus =
       body.status;
-
-    const trackingCode =
-      normalizeNullableText(
-        body.trackingCode,
-        100
-      );
-
-    const trackingUrl =
-      normalizeNullableText(
-        body.trackingUrl,
-        500
-      );
-
-    const carrier =
-      normalizeNullableText(
-        body.carrier,
-        100
-      );
-
-    const customMessage =
-      normalizeNullableText(
-        body.message,
-        500
-      );
-
-    if (
-      !isValidTrackingUrl(
-        trackingUrl
-      )
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "O link de rastreamento é inválido.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    if (
-      (status ===
-        "SHIPPED" ||
-        status ===
-          "OUT_FOR_DELIVERY") &&
-      !trackingCode
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Informe o código de rastreamento para atualizar o pedido como enviado.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
 
     const existingOrder =
       await prisma.order.findUnique({
@@ -279,24 +377,167 @@ export async function PATCH(
           trackingCode: true,
           trackingUrl: true,
           carrier: true,
+
+          payment: {
+            select: {
+              status: true,
+            },
+          },
         },
       });
 
     if (!existingOrder) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "Pedido não encontrado.",
         },
-        {
-          status: 404,
-        }
+        404
       );
     }
 
     const statusChanged =
       existingOrder.status !==
-      status;
+      nextStatus;
+
+    if (
+      statusChanged &&
+      !isAllowedTransition(
+        existingOrder.status,
+        nextStatus
+      )
+    ) {
+      return jsonResponse(
+        {
+          error:
+            `Não é permitido alterar o pedido de ${existingOrder.status} para ${nextStatus}.`,
+        },
+        409
+      );
+    }
+
+    /*
+     * Um pedido somente pode entrar em
+     * preparação se o pagamento estiver
+     * aprovado no banco.
+     */
+    if (
+      nextStatus ===
+        "PROCESSING" &&
+      existingOrder.payment
+        ?.status !== "APPROVED"
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "O pedido não possui um pagamento aprovado.",
+        },
+        409
+      );
+    }
+
+    /*
+     * Cancelar um pedido pago exige antes
+     * um fluxo real de cancelamento ou
+     * reembolso no Mercado Pago.
+     */
+    if (
+      nextStatus ===
+        "CANCELED" &&
+      existingOrder.payment
+        ?.status === "APPROVED"
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "Um pedido pago não pode ser cancelado manualmente. Faça primeiro o reembolso pelo Mercado Pago.",
+        },
+        409
+      );
+    }
+
+    const hasTrackingCode =
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "trackingCode"
+      );
+
+    const hasTrackingUrl =
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "trackingUrl"
+      );
+
+    const hasCarrier =
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "carrier"
+      );
+
+    /*
+     * Campos omitidos são preservados.
+     * Somente valores realmente enviados
+     * pelo painel são substituídos.
+     */
+    const trackingCode =
+      hasTrackingCode
+        ? normalizeNullableText(
+            body.trackingCode,
+            100
+          )
+        : existingOrder.trackingCode;
+
+    const trackingUrl =
+      hasTrackingUrl
+        ? normalizeNullableText(
+            body.trackingUrl,
+            500
+          )
+        : existingOrder.trackingUrl;
+
+    const carrier =
+      hasCarrier
+        ? normalizeNullableText(
+            body.carrier,
+            100
+          )
+        : existingOrder.carrier;
+
+    const customMessage =
+      normalizeNullableText(
+        body.message,
+        500
+      );
+
+    if (
+      !isValidTrackingUrl(
+        trackingUrl
+      )
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "O link de rastreamento deve ser uma URL HTTPS válida.",
+        },
+        400
+      );
+    }
+
+    if (
+      (nextStatus ===
+        "SHIPPED" ||
+        nextStatus ===
+          "OUT_FOR_DELIVERY") &&
+      !trackingCode
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "Informe o código de rastreamento para atualizar o pedido.",
+        },
+        400
+      );
+    }
 
     const trackingChanged =
       existingOrder.trackingCode !==
@@ -311,7 +552,7 @@ export async function PATCH(
       !trackingChanged &&
       !customMessage
     ) {
-      return NextResponse.json({
+      return jsonResponse({
         success: true,
         updated: false,
         message:
@@ -322,73 +563,112 @@ export async function PATCH(
     const historyMessage =
       customMessage ||
       getDefaultMessage(
-        status
+        nextStatus
       );
 
-    const order =
-      await prisma.order.update({
-        where: {
-          id: orderId,
-        },
-
-        data: {
-          status,
-          trackingCode,
-          trackingUrl,
-          carrier,
-
+    try {
+      const order =
+        await prisma.order.update({
           /*
-           * Evita registros duplicados quando
-           * somente os mesmos dados são enviados.
+           * A condição com o status atual
+           * evita sobrescrever uma atualização
+           * concorrente do webhook.
            */
-          history:
-            statusChanged ||
-            customMessage
-              ? {
-                  create: {
-                    status,
+          where: {
+            id: orderId,
+            status:
+              existingOrder.status,
+          },
 
-                    title:
-                      statusTitles[
-                        status
-                      ],
+          data: {
+            status:
+              nextStatus,
 
-                    message:
-                      historyMessage,
-                  },
-                }
-              : undefined,
-        },
+            trackingCode,
+            trackingUrl,
+            carrier,
 
-        include: {
-          history: {
-            orderBy: {
-              createdAt:
-                "desc",
+            history:
+              statusChanged ||
+              customMessage
+                ? {
+                    create: {
+                      status:
+                        nextStatus,
+
+                      title:
+                        statusTitles[
+                          nextStatus
+                        ],
+
+                      message:
+                        historyMessage,
+                    },
+                  }
+                : undefined,
+          },
+
+          select: {
+            id: true,
+            status: true,
+            trackingCode: true,
+            trackingUrl: true,
+            carrier: true,
+            updatedAt: true,
+
+            history: {
+              orderBy: {
+                createdAt:
+                  "desc",
+              },
+
+              select: {
+                id: true,
+                status: true,
+                title: true,
+                message: true,
+                createdAt: true,
+              },
             },
           },
-        },
-      });
+        });
 
-    return NextResponse.json({
-      success: true,
-      updated: true,
-      order,
-    });
+      return jsonResponse({
+        success: true,
+        updated: true,
+        order,
+      });
+    } catch (error) {
+      if (
+        isRecordNotFoundError(
+          error
+        )
+      ) {
+        return jsonResponse(
+          {
+            error:
+              "O pedido foi atualizado por outro processo. Recarregue a página e tente novamente.",
+          },
+          409
+        );
+      }
+
+      throw error;
+    }
   } catch (error) {
     console.error(
       "Erro ao atualizar pedido:",
-      error
+      error instanceof Error
+        ? error.message
+        : "Erro desconhecido."
     );
 
-    return NextResponse.json(
+    return jsonResponse(
       {
         error:
           "Erro interno ao atualizar o pedido.",
       },
-      {
-        status: 500,
-      }
+      500
     );
   }
 }

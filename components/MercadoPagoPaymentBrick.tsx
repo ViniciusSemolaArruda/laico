@@ -206,9 +206,11 @@ export default function MercadoPagoPaymentBrick({
       setSdkReady(false);
 
       console.error(
-        "Erro ao inicializar o SDK do Mercado Pago:",
-        error
-      );
+  "Não foi possível inicializar o pagamento.",
+  error instanceof Error
+    ? error.name
+    : "UnknownError"
+);
     }
   }, [publicKey]);
 
@@ -342,11 +344,7 @@ export default function MercadoPagoPaymentBrick({
           const data =
             (await response.json()) as PaymentResult;
 
-          console.log(
-            "Resposta completa do pagamento:",
-            data
-          );
-
+          
           if (!response.ok) {
             throw new Error(
               data.error ||
@@ -359,18 +357,7 @@ export default function MercadoPagoPaymentBrick({
               data.status
             );
 
-          console.log(
-            "Status retornado pelo Mercado Pago:",
-            {
-              status,
-              statusDetail:
-                data.statusDetail,
-              paymentId:
-                data.id,
-              mercadoPagoOrderId:
-                data.mercadoPagoOrderId,
-            }
-          );
+          
 
           /*
            * Cartão aprovado.
@@ -509,9 +496,9 @@ export default function MercadoPagoPaymentBrick({
               : "Erro ao processar pagamento.";
 
           console.error(
-            "Erro ao processar pagamento:",
-            error
-          );
+  "Erro ao processar pagamento:",
+  message
+);
 
           setBrickError(
             message
@@ -531,9 +518,7 @@ export default function MercadoPagoPaymentBrick({
 
   const handleReady =
     useCallback(() => {
-      console.log(
-        `Payment Brick pronto: ${selectedPayment}`
-      );
+      
 
       setBrickError(null);
     }, [selectedPayment]);
@@ -541,10 +526,7 @@ export default function MercadoPagoPaymentBrick({
   const handleError =
     useCallback<PaymentOnError>(
       (error) => {
-        console.error(
-          "Erro no Payment Brick:",
-          error
-        );
+        
 
         if (
           typeof error ===
@@ -569,32 +551,31 @@ export default function MercadoPagoPaymentBrick({
     );
 
   async function copyPixCode() {
-    const pixQrCode =
-      paymentResult?.pixQrCode;
+  const pixQrCode =
+    paymentResult?.pixQrCode;
 
-    if (!pixQrCode) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(
-        pixQrCode
-      );
-
-      alert(
-        "Código Pix copiado!"
-      );
-    } catch (error) {
-      console.error(
-        "Erro ao copiar código Pix:",
-        error
-      );
-
-      alert(
-        "Não foi possível copiar o código Pix."
-      );
-    }
+  if (!pixQrCode) {
+    return;
   }
+
+  try {
+    await navigator.clipboard.writeText(
+      pixQrCode
+    );
+
+    alert(
+      "Código Pix copiado!"
+    );
+  } catch {
+    console.error(
+      "Não foi possível copiar o código Pix."
+    );
+
+    alert(
+      "Não foi possível copiar o código Pix."
+    );
+  }
+}
 
   if (!publicKey) {
     return (

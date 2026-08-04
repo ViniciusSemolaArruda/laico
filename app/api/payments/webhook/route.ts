@@ -674,9 +674,23 @@ export async function POST(request: Request) {
     }
 
     console.error(
-      "Erro ao processar webhook do Mercado Pago:",
-      error
-    );
+  "Erro ao processar webhook do Mercado Pago:",
+  {
+    errorType:
+      error instanceof Error
+        ? error.name
+        : "UnknownError",
+
+    requestId:
+      xRequestId || null,
+
+    hasSignature:
+      Boolean(xSignature),
+
+    hasDataId:
+      Boolean(queryDataId),
+  }
+);
 
     /*
      * O Mercado Pago tentará enviar novamente

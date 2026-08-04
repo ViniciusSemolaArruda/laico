@@ -765,25 +765,19 @@ export async function POST(
     return response;
   } catch (error) {
     if (
-      process.env.NODE_ENV ===
-      "development"
-    ) {
-      console.error(
-        "Erro no checkout:",
-        error
-      );
-    } else {
-      /*
-       * Em produção não imprimimos o corpo,
-       * CPF, endereço, token ou dados do cliente.
-       */
-      console.error(
-        "Erro interno no checkout:",
-        error instanceof Error
-          ? error.name
-          : "UnknownError"
-      );
-    }
+  process.env.NODE_ENV ===
+  "development"
+) {
+  console.error(
+  "Erro interno no checkout:",
+  {
+    errorType:
+      error instanceof Error
+        ? error.name
+        : "UnknownError",
+  }
+);
+}
 
     return errorResponse(
       "Erro interno ao criar pedido.",
