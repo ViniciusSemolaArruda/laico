@@ -2,9 +2,47 @@ import { NextResponse } from "next/server";
 
 import {
   createOrderAccessToken,
-  getOrderAccessCookieName,
+  getOrderAccessCookieOptions,
 } from "@/lib/order-access";
+
 import { prisma } from "@/lib/prisma";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const MAXIMUM_REQUEST_SIZE =
+  100_000;
+
+const VALID_STATES =
+  new Set([
+    "AC",
+    "AL",
+    "AP",
+    "AM",
+    "BA",
+    "CE",
+    "DF",
+    "ES",
+    "GO",
+    "MA",
+    "MT",
+    "MS",
+    "MG",
+    "PA",
+    "PB",
+    "PR",
+    "PE",
+    "PI",
+    "RJ",
+    "RN",
+    "RS",
+    "RO",
+    "RR",
+    "SC",
+    "SP",
+    "SE",
+    "TO",
+  ]);
 
 type CheckoutItem = {
   id: string;
@@ -41,20 +79,31 @@ type DatabaseProduct = {
   stock: number;
 };
 
-type CheckoutProduct =
-  DatabaseProduct & {
-    quantity: number;
-  };
+type CheckoutProduct = {
+  id: string;
+  name: string;
+  image: string;
+  price: number;
+  stock: number;
+  quantity: number;
+};
 
 function normalizeText(
   value: unknown,
   maximumLength = 255
-) {
-  if (typeof value !== "string") {
+): string {
+  if (
+    typeof value !== "string"
+  ) {
     return "";
   }
 
   return value
+    .replace(
+      /[\u0000-\u001F\u007F]/g,
+      " "
+    )
+    .replace(/\s+/g, " ")
     .trim()
     .slice(0, maximumLength);
 }
@@ -62,10 +111,10 @@ function normalizeText(
 function normalizeDigits(
   value: unknown,
   maximumLength: number
-) {
+): string {
   return normalizeText(
     value,
-    maximumLength + 10
+    maximumLength + 20
   )
     .replace(/\D/g, "")
     .slice(0, maximumLength);
@@ -73,9 +122,93 @@ function normalizeDigits(
 
 function isValidEmail(
   email: string
-) {
+): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
     email
+  );
+}
+
+function isValidCpf(
+  cpf: string
+): boolean {
+  if (!/^\d{11}$/.test(cpf)) {
+    return false;
+  }
+
+  if (
+    /^(\d)\1{10}$/.test(cpf)
+  ) {
+    return false;
+  }
+
+  const digits =
+    cpf.split("").map(Number);
+
+  let firstSum = 0;
+
+  for (
+    let index = 0;
+    index < 9;
+    index += 1
+  ) {
+    firstSum +=
+      digits[index] *
+      (10 - index);
+  }
+
+  let firstDigit =
+    (firstSum * 10) % 11;
+
+  if (firstDigit === 10) {
+    firstDigit = 0;
+  }
+
+  if (
+    firstDigit !== digits[9]
+  ) {
+    return false;
+  }
+
+  let secondSum = 0;
+
+  for (
+    let index = 0;
+    index < 10;
+    index += 1
+  ) {
+    secondSum +=
+      digits[index] *
+      (11 - index);
+  }
+
+  let secondDigit =
+    (secondSum * 10) % 11;
+
+  if (secondDigit === 10) {
+    secondDigit = 0;
+  }
+
+  return (
+    secondDigit === digits[10]
+  );
+}
+
+function errorResponse(
+  message: string,
+  status: number
+) {
+  return NextResponse.json(
+    {
+      error: message,
+    },
+    {
+      status,
+
+      headers: {
+        "Cache-Control":
+          "no-store",
+      },
+    }
   );
 }
 
@@ -83,8 +216,37 @@ export async function POST(
   request: Request
 ) {
   try {
-    const body =
-      (await request.json()) as CheckoutBody;
+    const contentLength =
+      Number(
+        request.headers.get(
+          "content-length"
+        ) || 0
+      );
+
+    if (
+      Number.isFinite(
+        contentLength
+      ) &&
+      contentLength >
+        MAXIMUM_REQUEST_SIZE
+    ) {
+      return errorResponse(
+        "Requisição muito grande.",
+        413
+      );
+    }
+
+    let body: CheckoutBody;
+
+    try {
+      body =
+        (await request.json()) as CheckoutBody;
+    } catch {
+      return errorResponse(
+        "Dados do checkout inválidos.",
+        400
+      );
+    }
 
     const customer =
       body.customer;
@@ -120,33 +282,33 @@ export async function POST(
       );
 
     if (
-      !customerName ||
+      customerName.length < 3 ||
       !isValidEmail(
         customerEmail
       )
     ) {
-      return NextResponse.json(
-        {
-          error:
-            "Nome e e-mail válidos são obrigatórios.",
-        },
-        {
-          status: 400,
-        }
+      return errorResponse(
+        "Nome e e-mail válidos são obrigatórios.",
+        400
       );
     }
 
     if (
-      customerCpf.length !== 11
+      customerPhone.length < 10 ||
+      customerPhone.length > 11
     ) {
-      return NextResponse.json(
-        {
-          error:
-            "Informe um CPF com 11 dígitos.",
-        },
-        {
-          status: 400,
-        }
+      return errorResponse(
+        "Informe um telefone válido.",
+        400
+      );
+    }
+
+    if (
+      !isValidCpf(customerCpf)
+    ) {
+      return errorResponse(
+        "Informe um CPF válido.",
+        400
       );
     }
 
@@ -154,49 +316,35 @@ export async function POST(
       !Array.isArray(items) ||
       items.length === 0
     ) {
-      return NextResponse.json(
-        {
-          error:
-            "Carrinho vazio.",
-        },
-        {
-          status: 400,
-        }
+      return errorResponse(
+        "Carrinho vazio.",
+        400
       );
     }
 
-    if (
-      items.length > 50
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Quantidade máxima de itens excedida.",
-        },
-        {
-          status: 400,
-        }
+    if (items.length > 50) {
+      return errorResponse(
+        "Quantidade máxima de itens excedida.",
+        400
       );
     }
 
     const normalizedItems =
-      items.map(
-        (item) => ({
-          id: normalizeText(
-            item.id,
-            100
-          ),
+      items.map((item) => ({
+        id: normalizeText(
+          item.id,
+          100
+        ),
 
-          slug: normalizeText(
-            item.slug,
-            180
-          ),
+        slug: normalizeText(
+          item.slug,
+          180
+        ),
 
-          quantity: Number(
-            item.quantity
-          ),
-        })
-      );
+        quantity: Number(
+          item.quantity
+        ),
+      }));
 
     const invalidItem =
       normalizedItems.find(
@@ -210,14 +358,9 @@ export async function POST(
       );
 
     if (invalidItem) {
-      return NextResponse.json(
-        {
-          error:
-            "Existe um item inválido no carrinho.",
-        },
-        {
-          status: 400,
-        }
+      return errorResponse(
+        "Existe um item inválido no carrinho.",
+        400
       );
     }
 
@@ -251,7 +394,7 @@ export async function POST(
         150
       );
 
-    const number =
+    const addressNumber =
       normalizeText(
         address?.number,
         20
@@ -265,27 +408,22 @@ export async function POST(
 
     if (
       cep.length !== 8 ||
-      state.length !== 2 ||
-      !city ||
-      !neighborhood ||
-      !street ||
-      !number
+      !VALID_STATES.has(state) ||
+      city.length < 2 ||
+      neighborhood.length < 2 ||
+      street.length < 2 ||
+      !addressNumber
     ) {
-      return NextResponse.json(
-        {
-          error:
-            "Preencha corretamente o endereço de entrega.",
-        },
-        {
-          status: 400,
-        }
+      return errorResponse(
+        "Preencha corretamente o endereço de entrega.",
+        400
       );
     }
 
     /*
      * O navegador não controla os preços.
-     * Todos os produtos e valores são
-     * consultados novamente no banco.
+     * Produtos, preços e estoque são
+     * consultados novamente no servidor.
      */
     const productsById =
       new Map<
@@ -324,6 +462,7 @@ export async function POST(
             where: {
               slug:
                 item.slug,
+
               active: true,
             },
 
@@ -338,14 +477,9 @@ export async function POST(
       }
 
       if (!product) {
-        return NextResponse.json(
-          {
-            error:
-              "Produto não encontrado. Limpe o carrinho e adicione novamente.",
-          },
-          {
-            status: 400,
-          }
+        return errorResponse(
+          "Produto não encontrado. Limpe o carrinho e adicione novamente.",
+          400
         );
       }
 
@@ -358,21 +492,12 @@ export async function POST(
         ) ||
         productPrice <= 0
       ) {
-        return NextResponse.json(
-          {
-            error: `O produto ${product.name} possui um preço inválido.`,
-          },
-          {
-            status: 400,
-          }
+        return errorResponse(
+          `O produto ${product.name} possui um preço inválido.`,
+          400
         );
       }
 
-      /*
-       * Agrupa produtos repetidos para impedir
-       * que múltiplas linhas contornem a
-       * validação do estoque.
-       */
       const existingProduct =
         productsById.get(
           product.id
@@ -387,24 +512,20 @@ export async function POST(
         totalQuantity >
         product.stock
       ) {
-        return NextResponse.json(
-          {
-            error: `Estoque indisponível para ${product.name}.`,
-          },
-          {
-            status: 400,
-          }
+        return errorResponse(
+          `Estoque indisponível para ${product.name}.`,
+          400
         );
       }
 
       productsById.set(
         product.id,
         {
-          ...product,
-
-          price:
-            productPrice,
-
+          id: product.id,
+          name: product.name,
+          image: product.image,
+          price: productPrice,
+          stock: product.stock,
           quantity:
             totalQuantity,
         }
@@ -425,9 +546,7 @@ export async function POST(
               product
             ) =>
               currentTotal +
-              Number(
-                product.price
-              ) *
+              product.price *
                 product.quantity,
             0
           )
@@ -437,39 +556,32 @@ export async function POST(
     /*
      * Frete e desconto não são aceitos
      * diretamente do navegador.
+     *
+     * Serão calculados no servidor quando
+     * fizermos Correios e cupons.
      */
     const shipping = 0;
     const discount = 0;
 
-    const total = Number(
-      (
-        subtotal +
-        shipping -
-        discount
-      ).toFixed(2)
-    );
+    const total =
+      Number(
+        (
+          subtotal +
+          shipping -
+          discount
+        ).toFixed(2)
+      );
 
     if (
-      !Number.isFinite(
-        total
-      ) ||
+      !Number.isFinite(total) ||
       total <= 0
     ) {
-      return NextResponse.json(
-        {
-          error:
-            "O total do pedido é inválido.",
-        },
-        {
-          status: 400,
-        }
+      return errorResponse(
+        "O total do pedido é inválido.",
+        400
       );
     }
 
-    /*
-     * O Prisma infere automaticamente o tipo
-     * real do parâmetro transaction.
-     */
     const order =
       await prisma.$transaction(
         async (transaction) => {
@@ -485,8 +597,7 @@ export async function POST(
                   customerName,
 
                 phone:
-                  customerPhone ||
-                  null,
+                  customerPhone,
 
                 cpf:
                   customerCpf,
@@ -500,8 +611,7 @@ export async function POST(
                   customerEmail,
 
                 phone:
-                  customerPhone ||
-                  null,
+                  customerPhone,
 
                 cpf:
                   customerCpf,
@@ -515,83 +625,79 @@ export async function POST(
                   user.id,
 
                 name:
-                  "Endereço principal",
+                  "Endereço de entrega",
 
                 cep,
                 state,
                 city,
                 neighborhood,
                 street,
-                number,
+
+                number:
+                  addressNumber,
 
                 complement:
-                  complement ||
-                  null,
+                  complement || null,
               },
             });
 
-          const createdOrder =
-            await transaction.order.create({
-              data: {
-                userId:
-                  user.id,
+          return transaction.order.create({
+            data: {
+              userId:
+                user.id,
 
-                addressId:
-                  savedAddress.id,
+              addressId:
+                savedAddress.id,
 
-                subtotal,
-                shipping,
-                discount,
-                total,
+              subtotal,
+              shipping,
+              discount,
+              total,
 
-                items: {
-                  create:
-                    products.map(
-                      (
-                        product
-                      ) => ({
-                        productId:
-                          product.id,
+              items: {
+                create:
+                  products.map(
+                    (product) => ({
+                      productId:
+                        product.id,
 
-                        name:
-                          product.name,
+                      name:
+                        product.name,
 
-                        image:
-                          product.image,
+                      image:
+                        product.image,
 
-                        /*
-                         * Número já validado.
-                         */
-                        price:
-                          Number(
-                            product.price
-                          ),
+                      price:
+                        product.price,
 
-                        quantity:
-                          product.quantity,
-                      })
-                    ),
-                },
+                      quantity:
+                        product.quantity,
+                    })
+                  ),
+              },
 
-                history: {
-                  create: {
-                    status:
-                      "PENDING",
+              history: {
+                create: {
+                  status:
+                    "PENDING",
 
-                    title:
-                      "Pedido realizado",
+                  title:
+                    "Pedido realizado",
 
-                    message:
-                      "O pedido foi criado e aguarda a confirmação do pagamento.",
-                  },
+                  message:
+                    "O pedido foi criado e aguarda a confirmação do pagamento.",
                 },
               },
-            });
-
-          return createdOrder;
+            },
+          });
         }
       );
 
+    /*
+     * Gera o token secreto, salva somente
+     * seu hash no banco e devolve o token
+     * verdadeiro para ser colocado no cookie.
+     */
     const accessToken =
       await createOrderAccessToken({
         orderId: order.id,
@@ -601,12 +707,10 @@ export async function POST(
     const response =
       NextResponse.json(
         {
-          orderId:
-            order.id,
+          orderId: order.id,
 
           order: {
             id: order.id,
-
             status:
               order.status,
 
@@ -638,52 +742,52 @@ export async function POST(
         },
         {
           status: 201,
+
+          headers: {
+            "Cache-Control":
+              "no-store",
+          },
         }
       );
 
+    /*
+     * O token não é devolvido no JSON e não
+     * pode ser acessado pelo JavaScript.
+     */
     response.cookies.set({
-      name:
-        getOrderAccessCookieName(
-          order.id
-        ),
+      ...getOrderAccessCookieOptions(
+        order.id
+      ),
 
-      value:
-        accessToken,
-
-      httpOnly: true,
-
-      secure:
-        process.env
-          .NODE_ENV ===
-        "production",
-
-      sameSite: "lax",
-
-      path:
-        `/pedido/${order.id}`,
-
-      maxAge:
-        60 *
-        60 *
-        24 *
-        30,
+      value: accessToken,
     });
 
     return response;
   } catch (error) {
-    console.error(
-      "Erro no checkout:",
-      error
-    );
+    if (
+      process.env.NODE_ENV ===
+      "development"
+    ) {
+      console.error(
+        "Erro no checkout:",
+        error
+      );
+    } else {
+      /*
+       * Em produção não imprimimos o corpo,
+       * CPF, endereço, token ou dados do cliente.
+       */
+      console.error(
+        "Erro interno no checkout:",
+        error instanceof Error
+          ? error.name
+          : "UnknownError"
+      );
+    }
 
-    return NextResponse.json(
-      {
-        error:
-          "Erro interno ao criar pedido.",
-      },
-      {
-        status: 500,
-      }
+    return errorResponse(
+      "Erro interno ao criar pedido.",
+      500
     );
   }
 }
