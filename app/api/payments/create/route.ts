@@ -1,6 +1,6 @@
 //app\api\payments\create\route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "../../../../lib/prisma";
 import { MercadoPagoConfig, Preference } from "mercadopago";
 
 const client = new MercadoPagoConfig({
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       body: {
         external_reference: order.id,
 
-        items: order.items.map((item) => ({
+        items: order.items.map((item: { productId: any; name: any; quantity: any; price: any; }) => ({
           id: item.productId,
           title: item.name,
           quantity: item.quantity,

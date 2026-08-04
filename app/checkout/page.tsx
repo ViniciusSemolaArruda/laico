@@ -1,22 +1,27 @@
-// app/checkout/page.tsx
 "use client";
 
-import Header from "../../components/Header";
-import Footer from "../../components/Footer";
-import MercadoPagoPaymentBrick from "../../components/MercadoPagoPaymentBrick";
-
 import {
-  User,
-  MapPin,
   CreditCard,
-  ShoppingBag,
   Lock,
-  ShieldCheck,
-  Truck,
+  MapPin,
   MessageCircle,
+  ShieldCheck,
+  ShoppingBag,
+  Truck,
+  User,
 } from "lucide-react";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import Footer from "@/components/Footer";
+import Header from "@/components/Header";
+
+import MercadoPagoPaymentBrick from "@/components/MercadoPagoPaymentBrick";
 
 const cardFlags = {
   pix: "https://cdn.sistemawbuy.com.br/img/bandeiras/novo/pix.svg",
@@ -25,7 +30,44 @@ const cardFlags = {
   boleto: "https://cdn.sistemawbuy.com.br/img/bandeiras/novo/boleto.svg",
 };
 
-type PaymentMethod = "pix" | "credit_card" | "debit_card" | "ticket";
+const brazilianStates = [
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
+];
+
+const inputClassName =
+  "mt-2 h-[40px] w-full rounded-[5px] border border-[#e5e5e5] px-3 text-[13px] outline-none transition focus:border-[#b98218] focus:ring-2 focus:ring-[#b98218]/10 disabled:cursor-not-allowed disabled:bg-neutral-100";
+
+type PaymentMethod =
+  | "pix"
+  | "credit_card"
+  | "debit_card"
+  | "ticket";
 
 type CartItem = {
   id: string;
@@ -36,7 +78,7 @@ type CartItem = {
   quantity: number;
 };
 
-type FormData = {
+type CheckoutForm = {
   name: string;
   cpf: string;
   email: string;
@@ -48,10 +90,24 @@ type FormData = {
   neighborhood: string;
   city: string;
   state: string;
-  reference: string;
 };
 
-const initialForm: FormData = {
+type CheckoutResponse = {
+  orderId?: string;
+  error?: string;
+
+  order?: {
+    id?: string;
+    status?: string;
+    subtotal?: number;
+    shipping?: number;
+    discount?: number;
+    total?: number;
+    expiresAt?: string | null;
+  };
+};
+
+const initialForm: CheckoutForm = {
   name: "",
   cpf: "",
   email: "",
@@ -63,151 +119,460 @@ const initialForm: FormData = {
   neighborhood: "",
   city: "",
   state: "RJ",
-  reference: "",
 };
 
-function formatPrice(value: number) {
-  return value.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+function formatPrice(
+  value: number
+): string {
+  const safeValue =
+    Number.isFinite(value)
+      ? value
+      : 0;
+
+  return safeValue.toLocaleString(
+    "pt-BR",
+    {
+      style: "currency",
+      currency: "BRL",
+    }
+  );
 }
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
+function formatDateTime(
+  value: string
+): string {
+  const date = new Date(value);
+
+  if (
+    Number.isNaN(date.getTime())
+  ) {
+    return "Prazo não informado";
+  }
+
+  return date.toLocaleString(
+    "pt-BR",
+    {
+      dateStyle: "short",
+      timeStyle: "short",
+    }
+  );
+}
+
+function isValidCartItem(
+  value: unknown
+): value is CartItem {
+  if (
+    typeof value !== "object" ||
+    value === null
+  ) {
+    return false;
+  }
+
+  const item =
+    value as Partial<CartItem>;
+
+  return (
+    typeof item.id === "string" &&
+    item.id.length > 0 &&
+    typeof item.slug === "string" &&
+    typeof item.name === "string" &&
+    typeof item.image === "string" &&
+    typeof item.price === "number" &&
+    Number.isFinite(item.price) &&
+    item.price > 0 &&
+    typeof item.quantity === "number" &&
+    Number.isInteger(
+      item.quantity
+    ) &&
+    item.quantity > 0 &&
+    item.quantity <= 100
+  );
+}
+
+function normalizeCartItems(
+  value: unknown
+): CartItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(isValidCartItem)
+    .slice(0, 50);
 }
 
 export default function CheckoutPage() {
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [form, setForm] = useState<FormData>(initialForm);
-  const [loading, setLoading] = useState(false);
+  const [
+    cartItems,
+    setCartItems,
+  ] = useState<CartItem[]>([]);
 
-  const [orderId, setOrderId] = useState<string | null>(null);
-  const [orderExpiresAt, setOrderExpiresAt] = useState<string | null>(null);
+  const [
+    form,
+    setForm,
+  ] = useState<CheckoutForm>(
+    initialForm
+  );
 
-  const [selectedPayment, setSelectedPayment] =
-    useState<PaymentMethod>("pix");
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  const [
+    errorMessage,
+    setErrorMessage,
+  ] = useState("");
+
+  const [
+    orderId,
+    setOrderId,
+  ] = useState<string | null>(
+    null
+  );
+
+  const [
+    orderAmount,
+    setOrderAmount,
+  ] = useState<number | null>(
+    null
+  );
+
+  const [
+    orderExpiresAt,
+    setOrderExpiresAt,
+  ] = useState<string | null>(
+    null
+  );
+
+  const [
+    selectedPayment,
+    setSelectedPayment,
+  ] =
+    useState<PaymentMethod>(
+      "pix"
+    );
+
+  /*
+   * Impede dois envios antes que o React
+   * atualize o estado loading.
+   */
+  const creatingOrderRef =
+    useRef(false);
 
   useEffect(() => {
-  const timer = window.setTimeout(() => {
-    const checkoutItems = window.localStorage.getItem("laico-checkout");
-    const storedCartItems = window.localStorage.getItem("laico-cart");
+    const timer =
+      window.setTimeout(() => {
+        const checkoutItems =
+          window.localStorage.getItem(
+            "laico-checkout"
+          );
 
-    const selectedItems = checkoutItems || storedCartItems;
+        const storedCartItems =
+          window.localStorage.getItem(
+            "laico-cart"
+          );
 
-    if (!selectedItems) return;
+        const selectedItems =
+          checkoutItems ||
+          storedCartItems;
 
-    try {
-      const parsedItems = JSON.parse(selectedItems);
+        if (!selectedItems) {
+          return;
+        }
 
-      if (Array.isArray(parsedItems)) {
-        setCartItems(parsedItems);
-      }
-    } catch (error) {
-      console.error("Erro ao carregar itens:", error);
+        try {
+          const parsedItems =
+            JSON.parse(
+              selectedItems
+            );
+
+          const validItems =
+            normalizeCartItems(
+              parsedItems
+            );
+
+          setCartItems(
+            validItems
+          );
+
+          if (
+            validItems.length === 0
+          ) {
+            window.localStorage.removeItem(
+              "laico-checkout"
+            );
+          }
+        } catch {
+          window.localStorage.removeItem(
+            "laico-checkout"
+          );
+        }
+      }, 0);
+
+    return () =>
+      window.clearTimeout(timer);
+  }, []);
+
+  /*
+   * O resumo local é apenas visual.
+   * O servidor recalcula todos os valores.
+   */
+  const localSubtotal =
+    useMemo(() => {
+      return cartItems.reduce(
+        (
+          currentTotal,
+          item
+        ) =>
+          currentTotal +
+          item.price *
+            item.quantity,
+        0
+      );
+    }, [cartItems]);
+
+  const localShipping = 0;
+
+  const localTotal =
+    localSubtotal +
+    localShipping;
+
+  function updateForm(
+    field: keyof CheckoutForm,
+    value: string
+  ) {
+    if (orderId) {
+      return;
     }
-  }, 0);
 
-  return () => window.clearTimeout(timer);
-}, []);
-
-  const subtotal = useMemo(() => {
-    return cartItems.reduce(
-      (total, item) => total + item.price * item.quantity,
-      0
-    );
-  }, [cartItems]);
-
-  const shipping = 0;
-  const total = subtotal + shipping;
-
-  function updateForm(field: keyof FormData, value: string) {
     setForm((current) => ({
       ...current,
       [field]: value,
     }));
+
+    if (errorMessage) {
+      setErrorMessage("");
+    }
+  }
+
+  function validateForm(): string | null {
+    if (
+      cartItems.length === 0
+    ) {
+      return "Nenhum produto foi encontrado no checkout.";
+    }
+
+    if (
+      !form.name.trim() ||
+      !form.cpf.trim() ||
+      !form.email.trim() ||
+      !form.phone.trim() ||
+      !form.cep.trim() ||
+      !form.street.trim() ||
+      !form.number.trim() ||
+      !form.neighborhood.trim() ||
+      !form.city.trim() ||
+      !form.state.trim()
+    ) {
+      return "Preencha todos os campos obrigatórios.";
+    }
+
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        form.email.trim()
+      )
+    ) {
+      return "Informe um e-mail válido.";
+    }
+
+    return null;
   }
 
   async function handleCreateOrder() {
+    if (
+      creatingOrderRef.current ||
+      loading ||
+      orderId
+    ) {
+      return;
+    }
+
+    const validationError =
+      validateForm();
+
+    if (validationError) {
+      setErrorMessage(
+        validationError
+      );
+
+      return;
+    }
+
+    creatingOrderRef.current =
+      true;
+
+    setLoading(true);
+    setErrorMessage("");
+
+    let orderCreated = false;
+
     try {
-      if (cartItems.length === 0) {
-        alert(
-          "Nenhum produto encontrado. Volte no produto e clique em Comprar agora."
+      const checkoutResponse =
+        await fetch(
+          "/api/checkout",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            credentials:
+              "same-origin",
+
+            cache: "no-store",
+
+            body: JSON.stringify({
+              customer: {
+                name:
+                  form.name.trim(),
+
+                email:
+                  form.email
+                    .trim()
+                    .toLowerCase(),
+
+                phone:
+                  form.phone,
+
+                cpf:
+                  form.cpf,
+              },
+
+              address: {
+                cep:
+                  form.cep,
+
+                state:
+                  form.state,
+
+                city:
+                  form.city.trim(),
+
+                neighborhood:
+                  form.neighborhood.trim(),
+
+                street:
+                  form.street.trim(),
+
+                number:
+                  form.number.trim(),
+
+                complement:
+                  form.complement.trim(),
+              },
+
+              items:
+                cartItems.map(
+                  (item) => ({
+                    id:
+                      item.id,
+
+                    slug:
+                      item.slug,
+
+                    quantity:
+                      item.quantity,
+                  })
+                ),
+            }),
+          }
         );
-        return;
+
+      const checkoutData =
+        (await checkoutResponse
+          .json()
+          .catch(
+            () => ({})
+          )) as CheckoutResponse;
+
+      if (
+        !checkoutResponse.ok
+      ) {
+        throw new Error(
+          checkoutData.error ||
+            "Não foi possível criar o pedido."
+        );
+      }
+
+      const createdOrderId =
+        checkoutData.orderId;
+
+      const serverTotal =
+        Number(
+          checkoutData.order
+            ?.total
+        );
+
+      if (
+        !createdOrderId ||
+        typeof createdOrderId !==
+          "string"
+      ) {
+        throw new Error(
+          "O servidor não retornou o pedido criado."
+        );
       }
 
       if (
-        !form.name ||
-        !form.cpf ||
-        !form.email ||
-        !form.phone ||
-        !form.cep ||
-        !form.street ||
-        !form.number ||
-        !form.neighborhood ||
-        !form.city ||
-        !form.state
+        !Number.isFinite(
+          serverTotal
+        ) ||
+        serverTotal <= 0
       ) {
-        alert("Preencha todos os campos obrigatórios.");
-        return;
+        throw new Error(
+          "O servidor retornou um valor de pedido inválido."
+        );
       }
 
-      setLoading(true);
+      orderCreated = true;
 
-      const checkoutResponse = await fetch("/api/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          paymentMethod: selectedPayment,
-          customer: {
-            name: form.name,
-            email: form.email,
-            phone: form.phone,
-            cpf: form.cpf,
-          },
-          address: {
-            cep: form.cep,
-            state: form.state,
-            city: form.city,
-            neighborhood: form.neighborhood,
-            street: form.street,
-            number: form.number,
-            complement: form.complement,
-          },
-          items: cartItems.map((item) => ({
-            id: item.id,
-            slug: item.slug,
-            quantity: item.quantity,
-          })),
-          shipping,
-        }),
-      });
+      setOrderId(
+        createdOrderId
+      );
 
-      const checkoutData = await checkoutResponse.json();
+      /*
+       * O Payment Brick recebe o total que
+       * veio do servidor, não o localStorage.
+       */
+      setOrderAmount(
+        serverTotal
+      );
 
-      if (!checkoutResponse.ok) {
-        throw new Error(checkoutData.error || "Erro ao criar pedido.");
-      }
-
-      setOrderId(checkoutData.orderId);
       setOrderExpiresAt(
-        checkoutData.expiresAt || checkoutData.order?.expiresAt || null
+        checkoutData.order
+          ?.expiresAt ||
+          null
       );
     } catch (error) {
-      console.error(error);
-      alert(
+      setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Erro ao preparar pagamento."
+          : "Erro ao preparar o pagamento."
       );
     } finally {
       setLoading(false);
+
+      /*
+       * Se o pedido foi criado, o bloqueio
+       * permanece para evitar outro pedido.
+       */
+      if (!orderCreated) {
+        creatingOrderRef.current =
+          false;
+      }
     }
   }
 
@@ -220,26 +585,34 @@ export default function CheckoutPage() {
     {
       id: "pix",
       title: "PIX",
-      text: "QR Code e copia e cola",
-      image: cardFlags.pix,
+      text:
+        "QR Code e copia e cola",
+      image:
+        cardFlags.pix,
     },
     {
       id: "credit_card",
       title: "Crédito",
-      text: "Cartão de crédito",
-      image: cardFlags.visa,
+      text:
+        "Cartão de crédito",
+      image:
+        cardFlags.visa,
     },
     {
       id: "debit_card",
       title: "Débito",
-      text: "Cartão de débito",
-      image: cardFlags.master,
+      text:
+        "Cartão de débito",
+      image:
+        cardFlags.master,
     },
     {
       id: "ticket",
       title: "Boleto",
-      text: "Boleto bancário",
-      image: cardFlags.boleto,
+      text:
+        "Boleto bancário",
+      image:
+        cardFlags.boleto,
     },
   ];
 
@@ -253,76 +626,247 @@ export default function CheckoutPage() {
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               <section className="rounded-[8px] border border-[#e8dcc2] bg-white p-6">
                 <div className="mb-6 flex items-center gap-3">
-                  <User className="text-[#b98218]" />
+                  <User
+                    className="text-[#b98218]"
+                    aria-hidden="true"
+                  />
 
                   <div>
                     <h2 className="text-[20px] font-bold">
                       1. Identificação
                     </h2>
+
                     <p className="text-[13px] text-neutral-500">
-                      Informe seus dados pessoais
+                      Informe seus dados
+                      pessoais
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  {[
-                    ["name", "Nome completo *", "Digite seu nome completo"],
-                    ["cpf", "CPF *", "000.000.000-00"],
-                    ["email", "E-mail *", "seu@email.com"],
-                    ["phone", "Telefone / WhatsApp *", "(11) 99999-9999"],
-                  ].map(([field, label, placeholder]) => (
-                    <label key={field} className="block">
-                      <span className="text-[13px] font-semibold">
-                        {label}
-                      </span>
+                  <label className="block">
+                    <span className="text-[13px] font-semibold">
+                      Nome completo *
+                    </span>
 
-                      <input
-                        value={form[field as keyof FormData]}
-                        onChange={(e) =>
-                          updateForm(field as keyof FormData, e.target.value)
-                        }
-                        placeholder={placeholder}
-                        disabled={!!orderId}
-                        className="mt-2 h-[40px] w-full rounded-[5px] border border-[#e5e5e5] px-3 text-[13px] outline-none focus:border-[#b98218] disabled:bg-neutral-100"
-                      />
-                    </label>
-                  ))}
+                    <input
+                      value={
+                        form.name
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "name",
+                          event.target
+                            .value
+                        )
+                      }
+                      name="name"
+                      type="text"
+                      autoComplete="name"
+                      disabled={
+                        Boolean(
+                          orderId
+                        )
+                      }
+                      placeholder="Digite seu nome completo"
+                      className={
+                        inputClassName
+                      }
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-[13px] font-semibold">
+                      CPF *
+                    </span>
+
+                    <input
+                      value={
+                        form.cpf
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "cpf",
+                          event.target
+                            .value
+                        )
+                      }
+                      name="cpf"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      disabled={
+                        Boolean(
+                          orderId
+                        )
+                      }
+                      placeholder="000.000.000-00"
+                      className={
+                        inputClassName
+                      }
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-[13px] font-semibold">
+                      E-mail *
+                    </span>
+
+                    <input
+                      value={
+                        form.email
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "email",
+                          event.target
+                            .value
+                        )
+                      }
+                      name="email"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      disabled={
+                        Boolean(
+                          orderId
+                        )
+                      }
+                      placeholder="seu@email.com"
+                      className={
+                        inputClassName
+                      }
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-[13px] font-semibold">
+                      Telefone / WhatsApp *
+                    </span>
+
+                    <input
+                      value={
+                        form.phone
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "phone",
+                          event.target
+                            .value
+                        )
+                      }
+                      name="phone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      disabled={
+                        Boolean(
+                          orderId
+                        )
+                      }
+                      placeholder="(11) 99999-9999"
+                      className={
+                        inputClassName
+                      }
+                    />
+                  </label>
                 </div>
               </section>
 
               <section className="rounded-[8px] border border-[#e8dcc2] bg-white p-6">
                 <div className="mb-6 flex items-center gap-3">
-                  <MapPin className="text-[#b98218]" />
+                  <MapPin
+                    className="text-[#b98218]"
+                    aria-hidden="true"
+                  />
 
                   <div>
-                    <h2 className="text-[20px] font-bold">2. Entrega</h2>
+                    <h2 className="text-[20px] font-bold">
+                      2. Entrega
+                    </h2>
+
                     <p className="text-[13px] text-neutral-500">
-                      Informe o endereço de entrega
+                      Informe o endereço de
+                      entrega
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <label className="block">
-                    <span className="text-[13px] font-semibold">CEP *</span>
+                    <span className="text-[13px] font-semibold">
+                      CEP *
+                    </span>
+
                     <input
-                      value={form.cep}
-                      onChange={(e) => updateForm("cep", e.target.value)}
-                      disabled={!!orderId}
+                      value={
+                        form.cep
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "cep",
+                          event.target
+                            .value
+                        )
+                      }
+                      name="postalCode"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      disabled={
+                        Boolean(
+                          orderId
+                        )
+                      }
                       placeholder="00000-000"
-                      className="mt-2 h-[40px] w-full rounded-[5px] border border-[#e5e5e5] px-3 text-[13px] outline-none focus:border-[#b98218] disabled:bg-neutral-100"
+                      className={
+                        inputClassName
+                      }
                     />
                   </label>
 
                   <label className="block">
-                    <span className="text-[13px] font-semibold">Rua *</span>
+                    <span className="text-[13px] font-semibold">
+                      Rua *
+                    </span>
+
                     <input
-                      value={form.street}
-                      onChange={(e) => updateForm("street", e.target.value)}
-                      disabled={!!orderId}
+                      value={
+                        form.street
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "street",
+                          event.target
+                            .value
+                        )
+                      }
+                      name="street"
+                      type="text"
+                      autoComplete="address-line1"
+                      disabled={
+                        Boolean(
+                          orderId
+                        )
+                      }
                       placeholder="Digite sua rua"
-                      className="mt-2 h-[40px] w-full rounded-[5px] border border-[#e5e5e5] px-3 text-[13px] outline-none focus:border-[#b98218] disabled:bg-neutral-100"
+                      className={
+                        inputClassName
+                      }
                     />
                   </label>
 
@@ -331,12 +875,32 @@ export default function CheckoutPage() {
                       <span className="text-[13px] font-semibold">
                         Número *
                       </span>
+
                       <input
-                        value={form.number}
-                        onChange={(e) => updateForm("number", e.target.value)}
-                        disabled={!!orderId}
+                        value={
+                          form.number
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          updateForm(
+                            "number",
+                            event.target
+                              .value
+                          )
+                        }
+                        name="addressNumber"
+                        type="text"
+                        autoComplete="address-line2"
+                        disabled={
+                          Boolean(
+                            orderId
+                          )
+                        }
                         placeholder="123"
-                        className="mt-2 h-[40px] w-full rounded-[5px] border border-[#e5e5e5] px-3 text-[13px] outline-none focus:border-[#b98218] disabled:bg-neutral-100"
+                        className={
+                          inputClassName
+                        }
                       />
                     </label>
 
@@ -344,14 +908,31 @@ export default function CheckoutPage() {
                       <span className="text-[13px] font-semibold">
                         Complemento
                       </span>
+
                       <input
-                        value={form.complement}
-                        onChange={(e) =>
-                          updateForm("complement", e.target.value)
+                        value={
+                          form.complement
                         }
-                        disabled={!!orderId}
+                        onChange={(
+                          event
+                        ) =>
+                          updateForm(
+                            "complement",
+                            event.target
+                              .value
+                          )
+                        }
+                        name="complement"
+                        type="text"
+                        disabled={
+                          Boolean(
+                            orderId
+                          )
+                        }
                         placeholder="Apto, bloco, etc."
-                        className="mt-2 h-[40px] w-full rounded-[5px] border border-[#e5e5e5] px-3 text-[13px] outline-none focus:border-[#b98218] disabled:bg-neutral-100"
+                        className={
+                          inputClassName
+                        }
                       />
                     </label>
                   </div>
@@ -361,14 +942,31 @@ export default function CheckoutPage() {
                       <span className="text-[13px] font-semibold">
                         Bairro *
                       </span>
+
                       <input
-                        value={form.neighborhood}
-                        onChange={(e) =>
-                          updateForm("neighborhood", e.target.value)
+                        value={
+                          form.neighborhood
                         }
-                        disabled={!!orderId}
+                        onChange={(
+                          event
+                        ) =>
+                          updateForm(
+                            "neighborhood",
+                            event.target
+                              .value
+                          )
+                        }
+                        name="neighborhood"
+                        type="text"
+                        disabled={
+                          Boolean(
+                            orderId
+                          )
+                        }
                         placeholder="Digite seu bairro"
-                        className="mt-2 h-[40px] w-full rounded-[5px] border border-[#e5e5e5] px-3 text-[13px] outline-none focus:border-[#b98218] disabled:bg-neutral-100"
+                        className={
+                          inputClassName
+                        }
                       />
                     </label>
 
@@ -376,40 +974,103 @@ export default function CheckoutPage() {
                       <span className="text-[13px] font-semibold">
                         Cidade *
                       </span>
+
                       <input
-                        value={form.city}
-                        onChange={(e) => updateForm("city", e.target.value)}
-                        disabled={!!orderId}
+                        value={
+                          form.city
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          updateForm(
+                            "city",
+                            event.target
+                              .value
+                          )
+                        }
+                        name="city"
+                        type="text"
+                        autoComplete="address-level2"
+                        disabled={
+                          Boolean(
+                            orderId
+                          )
+                        }
                         placeholder="Digite sua cidade"
-                        className="mt-2 h-[40px] w-full rounded-[5px] border border-[#e5e5e5] px-3 text-[13px] outline-none focus:border-[#b98218] disabled:bg-neutral-100"
+                        className={
+                          inputClassName
+                        }
                       />
                     </label>
                   </div>
 
-                  <label>
-                    <span className="text-[13px] font-semibold">Estado *</span>
+                  <label className="block">
+                    <span className="text-[13px] font-semibold">
+                      Estado *
+                    </span>
+
                     <select
-                      value={form.state}
-                      onChange={(e) => updateForm("state", e.target.value)}
-                      disabled={!!orderId}
-                      className="mt-2 h-[40px] w-full rounded-[5px] border border-[#e5e5e5] px-3 text-[13px] outline-none focus:border-[#b98218] disabled:bg-neutral-100"
+                      value={
+                        form.state
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "state",
+                          event.target
+                            .value
+                        )
+                      }
+                      name="state"
+                      autoComplete="address-level1"
+                      disabled={
+                        Boolean(
+                          orderId
+                        )
+                      }
+                      className={
+                        inputClassName
+                      }
                     >
-                      <option value="">Selecione</option>
-                      <option value="RJ">RJ</option>
-                      <option value="SP">SP</option>
-                      <option value="MG">MG</option>
+                      <option value="">
+                        Selecione
+                      </option>
+
+                      {brazilianStates.map(
+                        (state) => (
+                          <option
+                            key={
+                              state
+                            }
+                            value={
+                              state
+                            }
+                          >
+                            {state}
+                          </option>
+                        )
+                      )}
                     </select>
                   </label>
                 </div>
 
                 <div className="mt-5 flex gap-3 rounded-[6px] border border-[#ead9b8] bg-[#fffdf8] p-4">
-                  <Truck className="text-[#b98218]" />
+                  <Truck
+                    className="shrink-0 text-[#b98218]"
+                    aria-hidden="true"
+                  />
+
                   <div>
                     <p className="text-[13px] font-bold">
                       Previsão de entrega
                     </p>
+
                     <p className="text-[12px] text-neutral-500">
-                      De 3 a 10 dias úteis, conforme a região.
+                      O prazo será calculado
+                      quando a integração com
+                      os Correios estiver
+                      configurada.
                     </p>
                   </div>
                 </div>
@@ -418,75 +1079,149 @@ export default function CheckoutPage() {
 
             <section className="rounded-[8px] border border-[#e8dcc2] bg-white p-6">
               <div className="mb-6 flex items-center gap-3">
-                <CreditCard className="text-[#b98218]" />
+                <CreditCard
+                  className="text-[#b98218]"
+                  aria-hidden="true"
+                />
+
                 <div>
-                  <h2 className="text-[20px] font-bold">3. Pagamento</h2>
+                  <h2 className="text-[20px] font-bold">
+                    3. Pagamento
+                  </h2>
+
                   <p className="text-[13px] text-neutral-500">
-                    Escolha Pix, boleto, crédito ou débito no próprio site.
+                    Escolha Pix, boleto,
+                    crédito ou débito no
+                    próprio site.
                   </p>
                 </div>
               </div>
 
+              {errorMessage && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700"
+                >
+                  {errorMessage}
+                </div>
+              )}
+
               {!orderId ? (
                 <>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                    {paymentOptions.map((payment) => (
-                      <button
-                        type="button"
-                        key={payment.id}
-                        onClick={() => setSelectedPayment(payment.id)}
-                        className={`h-[100px] rounded-[6px] border p-4 text-left transition ${
-                          selectedPayment === payment.id
-                            ? "border-[#b98218] bg-[#fff8e8] shadow"
-                            : "border-[#e5e5e5] bg-white hover:border-[#b98218]"
-                        }`}
-                      >
-                        <img
-                          src={payment.image}
-                          alt={payment.title}
-                          className="mb-3 h-[28px] object-contain"
-                        />
-                        <p className="text-[14px] font-bold">
-                          {payment.title}
-                        </p>
-                        <p className="text-[11px] text-neutral-500">
-                          {payment.text}
-                        </p>
-                      </button>
-                    ))}
+                    {paymentOptions.map(
+                      (payment) => (
+                        <button
+                          type="button"
+                          key={
+                            payment.id
+                          }
+                          onClick={() =>
+                            setSelectedPayment(
+                              payment.id
+                            )
+                          }
+                          disabled={
+                            loading
+                          }
+                          className={`h-[100px] rounded-[6px] border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                            selectedPayment ===
+                            payment.id
+                              ? "border-[#b98218] bg-[#fff8e8] shadow"
+                              : "border-[#e5e5e5] bg-white hover:border-[#b98218]"
+                          }`}
+                        >
+                          <img
+                            src={
+                              payment.image
+                            }
+                            alt={
+                              payment.title
+                            }
+                            className="mb-3 h-[28px] object-contain"
+                          />
+
+                          <p className="text-[14px] font-bold">
+                            {
+                              payment.title
+                            }
+                          </p>
+
+                          <p className="text-[11px] text-neutral-500">
+                            {
+                              payment.text
+                            }
+                          </p>
+                        </button>
+                      )
+                    )}
                   </div>
 
                   <button
                     type="button"
-                    onClick={handleCreateOrder}
-                    disabled={loading}
-                    className="mt-6 flex h-[52px] w-full items-center justify-center gap-2 rounded-[5px] bg-gradient-to-r from-[#b8872b] via-[#d8b35a] to-[#b98218] font-bold text-white shadow-lg disabled:opacity-60"
+                    onClick={
+                      handleCreateOrder
+                    }
+                    disabled={
+                      loading ||
+                      cartItems.length ===
+                        0
+                    }
+                    className="mt-6 flex h-[52px] w-full items-center justify-center gap-2 rounded-[5px] bg-gradient-to-r from-[#b8872b] via-[#d8b35a] to-[#b98218] font-bold text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <Lock size={18} />
+                    <Lock
+                      size={18}
+                      aria-hidden="true"
+                    />
+
                     {loading
                       ? "Preparando pagamento..."
-                      : selectedPayment === "pix"
-                      ? "Gerar Pix"
-                      : selectedPayment === "ticket"
-                      ? "Gerar boleto"
-                      : "Continuar pagamento"}
+                      : selectedPayment ===
+                          "pix"
+                        ? "Gerar Pix"
+                        : selectedPayment ===
+                            "ticket"
+                          ? "Gerar boleto"
+                          : "Continuar pagamento"}
                   </button>
                 </>
               ) : (
                 <div className="rounded-[8px] border border-[#ead9b8] bg-white p-4">
                   {orderExpiresAt && (
                     <div className="mb-4 rounded-[8px] border border-[#ead9b8] bg-[#fff8e8] p-4 text-[13px] text-[#20170f]">
-                      <strong>Prazo para pagamento:</strong>{" "}
-                      {formatDateTime(orderExpiresAt)}
+                      <strong>
+                        Prazo para pagamento:
+                      </strong>{" "}
+                      {formatDateTime(
+                        orderExpiresAt
+                      )}
                     </div>
                   )}
 
-                  <MercadoPagoPaymentBrick
-                    orderId={orderId}
-                    amount={Number(total)}
-                    email={form.email}
-                    selectedPayment={selectedPayment}
-                  />
+                  {orderAmount &&
+                  orderAmount > 0 ? (
+                    <MercadoPagoPaymentBrick
+                      orderId={
+                        orderId
+                      }
+                      amount={
+                        orderAmount
+                      }
+                      email={form.email
+                        .trim()
+                        .toLowerCase()}
+                      selectedPayment={
+                        selectedPayment
+                      }
+                    />
+                  ) : (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                      Não foi possível
+                      carregar o valor do
+                      pedido.
+                    </div>
+                  )}
                 </div>
               )}
             </section>
@@ -495,57 +1230,106 @@ export default function CheckoutPage() {
           <aside className="space-y-6">
             <section className="overflow-hidden rounded-[8px] border border-[#e8dcc2] bg-white">
               <div className="flex items-center gap-3 border-b border-[#e8dcc2] p-6">
-                <ShoppingBag />
-                <h2 className="text-[20px] font-bold">Resumo do pedido</h2>
+                <ShoppingBag
+                  aria-hidden="true"
+                />
+
+                <h2 className="text-[20px] font-bold">
+                  Resumo do pedido
+                </h2>
               </div>
 
               <div className="p-6">
-                {cartItems.length === 0 ? (
+                {cartItems.length ===
+                0 ? (
                   <p className="text-[14px] text-neutral-500">
-                    Nenhum produto selecionado.
+                    Nenhum produto
+                    selecionado.
                   </p>
                 ) : (
                   <div className="space-y-5">
-                    {cartItems.map((item) => (
-                      <div key={item.id} className="flex gap-4">
-                        <div className="flex h-[70px] w-[70px] items-center justify-center rounded-[6px] border border-[#e8dcc2] bg-[#fffdf8]">
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            className="max-h-[58px] max-w-[58px] object-contain"
-                          />
-                        </div>
+                    {cartItems.map(
+                      (item) => (
+                        <div
+                          key={
+                            item.id
+                          }
+                          className="flex gap-4"
+                        >
+                          <div className="flex h-[70px] w-[70px] shrink-0 items-center justify-center rounded-[6px] border border-[#e8dcc2] bg-[#fffdf8]">
+                            <img
+                              src={
+                                item.image
+                              }
+                              alt={
+                                item.name
+                              }
+                              className="max-h-[58px] max-w-[58px] object-contain"
+                            />
+                          </div>
 
-                        <div className="flex-1">
-                          <p className="text-[14px] font-bold">{item.name}</p>
-                          <p className="text-[12px] text-neutral-500">
-                            Qtd: {item.quantity}
-                          </p>
-                        </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[14px] font-bold">
+                              {
+                                item.name
+                              }
+                            </p>
 
-                        <strong className="text-[14px]">
-                          {formatPrice(item.price * item.quantity)}
-                        </strong>
-                      </div>
-                    ))}
+                            <p className="text-[12px] text-neutral-500">
+                              Qtd:{" "}
+                              {
+                                item.quantity
+                              }
+                            </p>
+                          </div>
+
+                          <strong className="shrink-0 text-[14px]">
+                            {formatPrice(
+                              item.price *
+                                item.quantity
+                            )}
+                          </strong>
+                        </div>
+                      )
+                    )}
                   </div>
                 )}
 
                 <div className="mt-5 space-y-4 border-t border-[#e8dcc2] pt-5 text-[14px]">
                   <div className="flex justify-between">
-                    <span>Subtotal</span>
-                    <strong>{formatPrice(subtotal)}</strong>
+                    <span>
+                      Subtotal
+                    </span>
+
+                    <strong>
+                      {formatPrice(
+                        localSubtotal
+                      )}
+                    </strong>
                   </div>
 
                   <div className="flex justify-between">
-                    <span>Frete</span>
-                    <strong>{formatPrice(shipping)}</strong>
+                    <span>
+                      Frete
+                    </span>
+
+                    <strong>
+                      {formatPrice(
+                        localShipping
+                      )}
+                    </strong>
                   </div>
 
                   <div className="flex justify-between pt-3 text-[18px]">
-                    <strong>Total</strong>
+                    <strong>
+                      Total
+                    </strong>
+
                     <strong className="text-[#b98218]">
-                      {formatPrice(total)}
+                      {formatPrice(
+                        orderAmount ??
+                          localTotal
+                      )}
                     </strong>
                   </div>
                 </div>
@@ -553,8 +1337,13 @@ export default function CheckoutPage() {
             </section>
 
             <p className="flex items-center justify-center gap-2 text-[13px] text-neutral-600">
-              <ShieldCheck size={17} />
-              Pagamento processado com segurança pelo Mercado Pago
+              <ShieldCheck
+                size={17}
+                aria-hidden="true"
+              />
+
+              Pagamento processado com
+              segurança pelo Mercado Pago
             </p>
           </aside>
         </div>
@@ -562,8 +1351,15 @@ export default function CheckoutPage() {
 
       <Footer />
 
-      <button className="fixed bottom-8 right-8 flex h-[62px] w-[62px] items-center justify-center rounded-full bg-[#24c45a] text-white shadow-2xl">
-        <MessageCircle size={34} />
+      <button
+        type="button"
+        aria-label="Falar pelo WhatsApp"
+        className="fixed bottom-8 right-8 flex h-[62px] w-[62px] items-center justify-center rounded-full bg-[#24c45a] text-white shadow-2xl"
+      >
+        <MessageCircle
+          size={34}
+          aria-hidden="true"
+        />
       </button>
     </main>
   );

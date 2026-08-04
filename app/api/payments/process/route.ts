@@ -1,12 +1,18 @@
 import { createHash } from "node:crypto";
+
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
   MercadoPagoConfig,
   Order as MercadoPagoOrder,
 } from "mercadopago";
 
-import { prisma } from "@/lib/prisma";
+import {
+  getOrderAccessCookieName,
+  verifyOrderAccessToken,
+} from "@/lib/order-access";
 import { getPaymentExpirationDate } from "@/lib/payments/paymentExpiration";
+import { prisma } from "@/lib/prisma";
 
 type SelectedPayment =
   | "pix"
@@ -45,9 +51,27 @@ type MercadoPagoErrorItem = {
 type MercadoPagoErrorResult = {
   message: string;
   status: number;
-  cause: unknown[];
-  raw: unknown;
 };
+
+const ACCESS_DENIED_MESSAGE =
+  "Você não tem permissão para fazer isso! Acesso negado.";
+
+const MAXIMUM_REQUEST_SIZE = 20_000;
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control":
+        "private, no-store, no-cache, must-revalidate",
+      Pragma: "no-cache",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
 
 function normalizeText(
   value: unknown,
@@ -68,23 +92,68 @@ function normalizeDigits(
 ) {
   return normalizeText(
     value,
-    maximumLength + 10
+    maximumLength + 20
   )
     .replace(/\D/g, "")
     .slice(0, maximumLength);
 }
 
+function isValidOrderId(
+  orderId: string
+) {
+  return /^[a-zA-Z0-9_-]{10,100}$/.test(
+    orderId
+  );
+}
+
+function isSelectedPayment(
+  value: unknown
+): value is SelectedPayment {
+  return (
+    value === "pix" ||
+    value === "credit_card" ||
+    value === "debit_card" ||
+    value === "ticket"
+  );
+}
+
+function isApprovedPaymentStatus(
+  status: string | null | undefined
+) {
+  const normalizedStatus =
+    status?.toLowerCase();
+
+  return (
+    normalizedStatus === "approved" ||
+    normalizedStatus === "processed" ||
+    normalizedStatus === "accredited"
+  );
+}
+
+function isRejectedPaymentStatus(
+  status: string | null | undefined
+) {
+  const normalizedStatus =
+    status?.toLowerCase();
+
+  return (
+    normalizedStatus === "rejected" ||
+    normalizedStatus === "cancelled" ||
+    normalizedStatus === "canceled"
+  );
+}
+
 function getDatabasePaymentStatus(
   status: string | null | undefined
 ): "APPROVED" | "REJECTED" | "PENDING" {
-  if (status === "approved") {
+  if (
+    isApprovedPaymentStatus(status)
+  ) {
     return "APPROVED";
   }
 
   if (
-    status === "rejected" ||
-    status === "cancelled" ||
-    status === "canceled"
+    isRejectedPaymentStatus(status)
   ) {
     return "REJECTED";
   }
@@ -119,30 +188,20 @@ function createIdempotencyKey({
   paymentMethodId: string;
   token?: string;
 }) {
+  /*
+   * O token do cartão não é salvo nem
+   * registrado. Ele é utilizado somente
+   * na geração deste hash.
+   */
   return createHash("sha256")
     .update(
       [
         orderId,
         paymentMethodId,
-        token ||
-          "payment-without-token",
+        token || "payment-without-token",
       ].join(":")
     )
     .digest("hex");
-}
-
-function stringifyError(
-  error: unknown
-) {
-  try {
-    return JSON.stringify(
-      error,
-      null,
-      2
-    );
-  } catch {
-    return String(error);
-  }
 }
 
 function getFirstErrorItem(
@@ -170,11 +229,6 @@ function getFirstErrorItem(
 function getMercadoPagoError(
   error: unknown
 ): MercadoPagoErrorResult {
-  console.error(
-    "Erro bruto retornado pelo Mercado Pago:",
-    stringifyError(error)
-  );
-
   if (
     typeof error !== "object" ||
     error === null
@@ -186,8 +240,6 @@ function getMercadoPagoError(
           ? error
           : "Erro desconhecido.",
       status: 500,
-      cause: [],
-      raw: error,
     };
   }
 
@@ -218,38 +270,14 @@ function getMercadoPagoError(
         })
       : null;
 
-  const causes = Array.isArray(
-    data.cause
-  )
-    ? data.cause
-    : Array.isArray(
-          responseData?.cause
-        )
-      ? responseData.cause
-      : [];
-
-  const errors = Array.isArray(
-    data.errors
-  )
-    ? data.errors
-    : Array.isArray(
-          responseData?.errors
-        )
-      ? responseData.errors
-      : [];
-
   const firstCause =
-    getFirstErrorItem(
-      data.cause
-    ) ||
+    getFirstErrorItem(data.cause) ||
     getFirstErrorItem(
       responseData?.cause
     );
 
   const firstError =
-    getFirstErrorItem(
-      data.errors
-    ) ||
+    getFirstErrorItem(data.errors) ||
     getFirstErrorItem(
       responseData?.errors
     );
@@ -291,11 +319,6 @@ function getMercadoPagoError(
   return {
     message,
     status,
-    cause:
-      causes.length > 0
-        ? causes
-        : errors,
-    raw: error,
   };
 }
 
@@ -313,77 +336,186 @@ export async function POST(
       "true";
 
     if (!accessToken) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
-            "MERCADO_PAGO_ACCESS_TOKEN não foi configurado.",
+            "O serviço de pagamento não foi configurado.",
         },
-        {
-          status: 500,
-        }
+        500
       );
     }
 
-    const body =
-      (await request.json()) as PaymentRequestBody;
+    const contentType =
+      request.headers.get(
+        "content-type"
+      );
+
+    if (
+      !contentType
+        ?.toLowerCase()
+        .includes("application/json")
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "Formato da solicitação inválido.",
+        },
+        415
+      );
+    }
+
+    const contentLength = Number(
+      request.headers.get(
+        "content-length"
+      ) || 0
+    );
+
+    if (
+      Number.isFinite(
+        contentLength
+      ) &&
+      contentLength >
+        MAXIMUM_REQUEST_SIZE
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "A solicitação é muito grande.",
+        },
+        413
+      );
+    }
+
+    let body: PaymentRequestBody;
+
+    try {
+      const rawBody =
+        await request.text();
+
+      if (
+        rawBody.length >
+        MAXIMUM_REQUEST_SIZE
+      ) {
+        return jsonResponse(
+          {
+            error:
+              "A solicitação é muito grande.",
+          },
+          413
+        );
+      }
+
+      body = JSON.parse(
+        rawBody
+      ) as PaymentRequestBody;
+    } catch {
+      return jsonResponse(
+        {
+          error:
+            "Solicitação inválida.",
+        },
+        400
+      );
+    }
 
     const orderId = normalizeText(
       body.orderId,
       100
     );
 
-    const selectedPayment =
-      body.paymentMethod;
-
-    const formData = body.formData;
-
-    if (!orderId) {
-      return NextResponse.json(
+    /*
+     * Não revelamos se um ID inválido
+     * corresponde ou não a algum pedido.
+     */
+    if (
+      !orderId ||
+      !isValidOrderId(orderId)
+    ) {
+      return jsonResponse(
         {
           error:
-            "O pedido não foi informado.",
+            ACCESS_DENIED_MESSAGE,
         },
-        {
-          status: 400,
-        }
+        403
       );
     }
 
+    /*
+     * AUTORIZAÇÃO ANTES DA CONSULTA
+     * COMPLETA DO PEDIDO.
+     *
+     * Conhecer somente o ID cms...
+     * não concede acesso ao pagamento.
+     */
+    const cookieStore =
+      await cookies();
+
+    const orderAccessToken =
+      cookieStore.get(
+        getOrderAccessCookieName(
+          orderId
+        )
+      )?.value;
+
+    if (!orderAccessToken) {
+      return jsonResponse(
+        {
+          error:
+            ACCESS_DENIED_MESSAGE,
+        },
+        403
+      );
+    }
+
+    const orderAccess =
+      await verifyOrderAccessToken({
+        token: orderAccessToken,
+        expectedOrderId: orderId,
+      });
+
+    if (!orderAccess) {
+      return jsonResponse(
+        {
+          error:
+            ACCESS_DENIED_MESSAGE,
+        },
+        403
+      );
+    }
+
+    const selectedPayment =
+      body.paymentMethod;
+
     if (
-      !selectedPayment ||
-      ![
-        "pix",
-        "credit_card",
-        "debit_card",
-        "ticket",
-      ].includes(selectedPayment)
+      !isSelectedPayment(
+        selectedPayment
+      )
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "A forma de pagamento é inválida.",
         },
-        {
-          status: 400,
-        }
+        400
       );
     }
+
+    const formData =
+      body.formData;
 
     const paymentMethodId =
       normalizeText(
         formData?.payment_method_id,
         50
-      );
+      ).toLowerCase();
 
     if (!paymentMethodId) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "A forma de pagamento não foi informada pelo Mercado Pago.",
         },
-        {
-          status: 400,
-        }
+        400
       );
     }
 
@@ -393,40 +525,106 @@ export async function POST(
           id: orderId,
         },
 
-        include: {
-          user: true,
-          address: true,
-          payment: true,
-          items: true,
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          total: true,
+
+          user: {
+            select: {
+              email: true,
+              cpf: true,
+            },
+          },
+
+          payment: {
+            select: {
+              status: true,
+              mercadoPagoPaymentId:
+                true,
+              mercadoPagoPreferenceId:
+                true,
+            },
+          },
+
+          items: {
+            select: {
+              name: true,
+              price: true,
+              quantity: true,
+              productId: true,
+            },
+          },
         },
       });
 
-    if (!order) {
-      return NextResponse.json(
+    /*
+     * Pedido inexistente e pedido de
+     * outro usuário recebem exatamente
+     * a mesma resposta.
+     */
+    if (
+      !order ||
+      order.userId !==
+        orderAccess.userId
+    ) {
+      return jsonResponse(
         {
           error:
-            "Pedido não encontrado.",
+            ACCESS_DENIED_MESSAGE,
         },
-        {
-          status: 404,
-        }
+        403
       );
     }
 
     if (
-      order.status === "PAID"
+      order.status === "PAID" ||
+      order.payment?.status ===
+        "APPROVED"
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "Este pedido já está pago.",
         },
-        {
-          status: 409,
-        }
+        409
       );
     }
 
+    if (
+      order.status ===
+        "CANCELED" ||
+      order.status ===
+        "REFUNDED" ||
+      order.status ===
+        "RETURNED"
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "Este pedido não está disponível para pagamento.",
+        },
+        409
+      );
+    }
+
+    if (
+      order.items.length === 0
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "O pedido não possui produtos.",
+        },
+        409
+      );
+    }
+
+    /*
+     * O valor utilizado no Mercado Pago
+     * vem exclusivamente do banco.
+     */
     const transactionAmount =
       Number(order.total);
 
@@ -436,14 +634,12 @@ export async function POST(
       ) ||
       transactionAmount <= 0
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "O pedido possui um valor inválido.",
         },
-        {
-          status: 400,
-        }
+        400
       );
     }
 
@@ -463,14 +659,12 @@ export async function POST(
       isCard &&
       !paymentToken
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "Os dados do cartão não foram preenchidos corretamente.",
         },
-        {
-          status: 400,
-        }
+        400
       );
     }
 
@@ -479,6 +673,7 @@ export async function POST(
     );
 
     const normalizedInstallments =
+      isCard &&
       Number.isInteger(
         installments
       ) &&
@@ -487,10 +682,14 @@ export async function POST(
         ? installments
         : 1;
 
+    /*
+     * E-mail e CPF vêm exclusivamente
+     * do banco. Os dados enviados pelo
+     * navegador não são utilizados.
+     */
     const payerEmail =
       normalizeText(
-        formData?.payer?.email ||
-          order.user.email,
+        order.user.email,
         254
       ).toLowerCase();
 
@@ -498,31 +697,33 @@ export async function POST(
       !payerEmail ||
       !payerEmail.includes("@")
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
-            "O e-mail do comprador é inválido.",
+            "O pedido não possui um e-mail válido.",
         },
-        {
-          status: 400,
-        }
+        400
       );
     }
 
     const identificationNumber =
       normalizeDigits(
-        formData?.payer
-          ?.identification?.number ||
-          order.user.cpf,
-        14
+        order.user.cpf,
+        11
       );
 
-    const identificationType =
-      normalizeText(
-        formData?.payer
-          ?.identification?.type,
-        10
-      ).toUpperCase() || "CPF";
+    if (
+      identificationNumber.length !==
+      11
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "O pedido não possui um CPF válido.",
+        },
+        400
+      );
+    }
 
     const expiresAt =
       getPaymentExpirationDate(
@@ -561,23 +762,20 @@ export async function POST(
     const payer: {
       email: string;
       entity_type: "individual";
-      identification?: {
-        type: string;
+      identification: {
+        type: "CPF";
         number: string;
       };
     } = {
       email: payerEmail,
       entity_type: "individual",
-    };
 
-    if (identificationNumber) {
-      payer.identification = {
-        type:
-          identificationType,
+      identification: {
+        type: "CPF",
         number:
           identificationNumber,
-      };
-    }
+      },
+    };
 
     const transactionPayment: {
       amount: string;
@@ -586,7 +784,9 @@ export async function POST(
       expiration_time?: string;
     } = {
       amount:
-        transactionAmount.toFixed(2),
+        transactionAmount.toFixed(
+          2
+        ),
 
       payment_method:
         paymentMethod,
@@ -602,7 +802,7 @@ export async function POST(
         accessToken,
 
         options: {
-          timeout: 15000,
+          timeout: 15_000,
           testToken: isTestMode,
         },
       });
@@ -620,22 +820,6 @@ export async function POST(
           paymentToken ||
           undefined,
       });
-
-    console.log(
-      "Criando pagamento no Mercado Pago:",
-      {
-        orderId: order.id,
-        amount:
-          transactionAmount.toFixed(2),
-        paymentMethodId,
-        paymentMethodType,
-        installments:
-          normalizedInstallments,
-        isTestMode,
-        hasToken:
-          Boolean(paymentToken),
-      }
-    );
 
     const mercadoPagoResponse =
       await mercadoPagoOrder.create({
@@ -697,13 +881,6 @@ export async function POST(
       !mercadoPagoResponse.id ||
       !paymentResponse?.id
     ) {
-      console.error(
-        "Resposta incompleta do Mercado Pago:",
-        stringifyError(
-          mercadoPagoResponse
-        )
-      );
-
       throw new Error(
         "O Mercado Pago não retornou os dados completos do pagamento."
       );
@@ -715,10 +892,21 @@ export async function POST(
       "pending";
 
     const statusDetail =
-      paymentResponse.status_detail ||
+      paymentResponse
+        .status_detail ||
       mercadoPagoResponse
         .status_detail ||
       null;
+
+    const paymentApproved =
+      isApprovedPaymentStatus(
+        paymentStatus
+      );
+
+    const paymentRejected =
+      isRejectedPaymentStatus(
+        paymentStatus
+      );
 
     const databasePaymentStatus =
       getDatabasePaymentStatus(
@@ -728,7 +916,7 @@ export async function POST(
     const orderStatus:
       | "PAID"
       | "PENDING" =
-      paymentStatus === "approved"
+      paymentApproved
         ? "PAID"
         : "PENDING";
 
@@ -754,6 +942,40 @@ export async function POST(
         ?.digitable_line ||
       null;
 
+    /*
+     * Atualizamos somente se o pedido
+     * ainda não foi cancelado, devolvido
+     * ou reembolsado durante a chamada.
+     */
+    const currentOrder =
+      await prisma.order.findUnique({
+        where: {
+          id: order.id,
+        },
+
+        select: {
+          status: true,
+        },
+      });
+
+    if (
+      !currentOrder ||
+      currentOrder.status ===
+        "CANCELED" ||
+      currentOrder.status ===
+        "REFUNDED" ||
+      currentOrder.status ===
+        "RETURNED"
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "O pedido não está mais disponível para pagamento.",
+        },
+        409
+      );
+    }
+
     await prisma.order.update({
       where: {
         id: order.id,
@@ -763,8 +985,7 @@ export async function POST(
         status: orderStatus,
 
         expiresAt:
-          paymentStatus ===
-          "approved"
+          paymentApproved
             ? null
             : expiresAt,
 
@@ -824,35 +1045,25 @@ export async function POST(
           create: {
             status: orderStatus,
 
-            title:
-              paymentStatus ===
-              "approved"
-                ? "Pagamento aprovado"
-                : paymentStatus ===
-                    "rejected"
-                  ? "Pagamento recusado"
-                  : "Pagamento iniciado",
+            title: paymentApproved
+              ? "Pagamento aprovado"
+              : paymentRejected
+                ? "Pagamento recusado"
+                : "Pagamento iniciado",
 
-            message:
-              paymentStatus ===
-              "approved"
-                ? "O pagamento foi confirmado pelo Mercado Pago."
-                : paymentStatus ===
-                    "rejected"
-                  ? `O pagamento foi recusado${
-                      statusDetail
-                        ? `: ${statusDetail}`
-                        : "."
-                    }`
-                  : `Aguardando confirmação do pagamento até ${expiresAt.toLocaleString(
-                      "pt-BR"
-                    )}.`,
+            message: paymentApproved
+              ? "O pagamento foi confirmado pelo Mercado Pago."
+              : paymentRejected
+                ? "O pagamento não foi aprovado. Você pode tentar novamente com outra forma de pagamento."
+                : `Aguardando a confirmação do pagamento até ${expiresAt.toLocaleString(
+                    "pt-BR"
+                  )}.`,
           },
         },
       },
     });
 
-    return NextResponse.json({
+    return jsonResponse({
       id: String(
         paymentResponse.id
       ),
@@ -862,7 +1073,10 @@ export async function POST(
           mercadoPagoResponse.id
         ),
 
-      status: paymentStatus,
+      status:
+        paymentApproved
+          ? "approved"
+          : paymentStatus,
 
       statusDetail,
 
@@ -871,33 +1085,27 @@ export async function POST(
         paymentMethodId,
 
       pixQrCode,
-
       pixQrCodeBase64,
-
       ticketUrl,
-
       barcode,
     });
   } catch (error) {
     const mercadoPagoError =
       getMercadoPagoError(error);
 
+    /*
+     * Não registramos token do cartão,
+     * CPF, cookie, endereço, corpo da
+     * requisição ou resposta completa.
+     */
     console.error(
-      "Erro ao processar pagamento:",
+      "Falha ao processar pagamento no Mercado Pago:",
       {
-        message:
-          mercadoPagoError.message,
-
         status:
           mercadoPagoError.status,
 
-        cause:
-          mercadoPagoError.cause,
-
-        raw:
-          stringifyError(
-            mercadoPagoError.raw
-          ),
+        message:
+          mercadoPagoError.message,
       }
     );
 
@@ -910,16 +1118,17 @@ export async function POST(
         401 ||
       normalizedMessage.includes(
         "unauthorized"
+      ) ||
+      normalizedMessage.includes(
+        "invalid credentials"
       )
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
-            "As credenciais do Mercado Pago não foram autorizadas. Confira se a Public Key e o Access Token são de teste e pertencem à mesma aplicação Checkout Bricks.",
+            "O serviço de pagamento não foi autorizado.",
         },
-        {
-          status: 401,
-        }
+        502
       );
     }
 
@@ -931,14 +1140,12 @@ export async function POST(
         "internal error"
       )
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
-            "O Mercado Pago apresentou uma falha interna ao criar o pagamento. Aguarde alguns instantes e tente novamente.",
+            "O Mercado Pago apresentou uma falha temporária. Aguarde alguns instantes e tente novamente.",
         },
-        {
-          status: 502,
-        }
+        502
       );
     }
 
@@ -947,21 +1154,29 @@ export async function POST(
         "invalid card token"
       ) ||
       normalizedMessage.includes(
-        "token"
+        "token expired"
+      ) ||
+      normalizedMessage.includes(
+        "expired token"
       )
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
-            "O token do cartão expirou ou é inválido. Preencha novamente os dados do cartão.",
+            "Os dados do cartão expiraram ou são inválidos. Preencha novamente.",
         },
-        {
-          status: 400,
-        }
+        400
       );
     }
 
-    return NextResponse.json(
+    const responseStatus =
+      mercadoPagoError.status >=
+        400 &&
+      mercadoPagoError.status < 500
+        ? mercadoPagoError.status
+        : 502;
+
+    return jsonResponse(
       {
         error:
           process.env.NODE_ENV ===
@@ -969,15 +1184,7 @@ export async function POST(
             ? `Mercado Pago: ${mercadoPagoError.message}`
             : "Não foi possível processar o pagamento.",
       },
-      {
-        status:
-          mercadoPagoError.status >=
-            400 &&
-          mercadoPagoError.status <
-            600
-            ? mercadoPagoError.status
-            : 500,
-      }
+      responseStatus
     );
   }
 }
