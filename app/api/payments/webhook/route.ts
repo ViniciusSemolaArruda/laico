@@ -246,17 +246,11 @@ export async function POST(
      * ou modificar qualquer pedido.
      */
     WebhookSignatureValidator.validate({
-      xSignature,
-      xRequestId,
-      dataId: queryDataId,
-      secret: webhookSecret,
-
-      /*
-       * Aceita notificações geradas nos últimos
-       * cinco minutos, reduzindo ataques de replay.
-       */
-      toleranceSeconds: 300,
-    });
+  xSignature,
+  xRequestId,
+  dataId: queryDataId,
+  secret: webhookSecret,
+});
 
     let body: MercadoPagoWebhookBody =
       {};
