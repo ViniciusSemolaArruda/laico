@@ -1,3 +1,4 @@
+//app\page.tsx
 /* eslint-disable react/jsx-key */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -15,8 +16,8 @@ import {
   MessageCircle,
 } from "lucide-react";
 
-import Header from "./components/Header";
-import Footer from "./components/Footer";
+import Header from "../components/Header";
+import Footer from "../components/Footer";
 
 const religions = [
   "Católicos e Protestantes",

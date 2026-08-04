@@ -3,19 +3,175 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELED
+  REFUNDED
+  RETURNED
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+  REFUNDED
+}
+
+model User {
+  id       String   @id @default(cuid())
+  name     String
+  email    String   @unique
+  password String?
+  phone    String?
+  cpf      String?
+  role     UserRole @default(USER)
+
+  addresses Address[]
+  orders    Order[]
+  cartItems CartItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Product {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
-  slug        String   @unique
+  slug        String  @unique
   description String
-  price       Float
+  price       Decimal @db.Decimal(10, 2)
   image       String
   religion    String
   category    String
   stock       Int
-  featured    Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  featured    Boolean @default(false)
+  active      Boolean @default(true)
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CartItem {
+  id        String @id @default(cuid())
+  userId    String
+  productId String
+  quantity  Int    @default(1)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+}
+
+model Address {
+  id           String  @id @default(cuid())
+  userId       String
+  name         String
+  cep          String
+  state        String
+  city         String
+  neighborhood String
+  street       String
+  number       String
+  complement   String?
+  isDefault    Boolean @default(false)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id        String      @id @default(cuid())
+  userId    String
+  addressId String?
+  status    OrderStatus @default(PENDING)
+
+  subtotal Decimal @db.Decimal(10, 2)
+  shipping Decimal @db.Decimal(10, 2)
+  discount Decimal @default(0) @db.Decimal(10, 2)
+  total    Decimal @db.Decimal(10, 2)
+
+  expiresAt DateTime?
+
+  trackingCode String?
+  trackingUrl  String?
+  carrier      String?
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address Address? @relation(fields: [addressId], references: [id])
+
+  items   OrderItem[]
+  payment Payment?
+  history OrderStatusHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrderItem {
+  id        String @id @default(cuid())
+  orderId   String
+  productId String
+
+  name     String
+  image    String
+  price    Decimal @db.Decimal(10, 2)
+  quantity Int
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model Payment {
+  id       String        @id @default(cuid())
+  orderId  String        @unique
+  provider String        @default("mercadopago")
+  status   PaymentStatus @default(PENDING)
+
+  mercadoPagoPaymentId    String?
+  mercadoPagoPreferenceId String?
+  paymentMethod           String?
+  paymentUrl              String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrderStatusHistory {
+  id      String      @id @default(cuid())
+  orderId String
+  status  OrderStatus
+  title   String
+  message String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
 }
