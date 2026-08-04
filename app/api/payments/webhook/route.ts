@@ -243,14 +243,20 @@ export async function POST(
     }
 
     /*
-     * Valida a assinatura antes de consultar
-     * ou modificar qualquer pedido.
-     */
-    WebhookSignatureValidator.validate({
+ * O Mercado Pago calcula a assinatura usando
+ * IDs alfanuméricos em letras minúsculas.
+ *
+ * Mantemos queryDataId original para consultar
+ * a Order posteriormente.
+ */
+const signatureDataId =
+  queryDataId.toLowerCase();
+
+WebhookSignatureValidator.validate({
   xSignature,
   xRequestId,
-  dataId: queryDataId,
-  secret: webhookSecret,
+  dataId: signatureDataId,
+  secret: webhookSecret.trim(),
 });
 
     let body: MercadoPagoWebhookBody =
