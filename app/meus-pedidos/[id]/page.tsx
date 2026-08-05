@@ -10,6 +10,10 @@ import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 
 import {
+  getCustomerSession,
+} from "@/lib/customer-auth";
+
+import {
   getOrderAccessCookieName,
   verifyOrderAccessToken,
 } from "@/lib/order-access";
@@ -118,12 +122,18 @@ function getSafeExternalUrl(
 export default async function UserOrderDetailsPage({
   params,
 }: Props) {
-  const { id } = await params;
+  const { id } =
+    await params;
 
   /*
-   * ID inválido e acesso não autorizado
-   * possuem o mesmo comportamento.
+   * =====================================================
+   * ID
+   * =====================================================
+   *
+   * ID inválido e acesso não autorizado possuem
+   * exatamente o mesmo comportamento.
    */
+
   if (
     !id ||
     !isValidOrderId(id)
@@ -131,42 +141,116 @@ export default async function UserOrderDetailsPage({
     notFound();
   }
 
-  const cookieStore =
-    await cookies();
+  /*
+   * =====================================================
+   * SESSÃO DO CLIENTE
+   * =====================================================
+   */
 
-  const accessToken =
-    cookieStore.get(
-      getOrderAccessCookieName(
-        id
-      )
-    )?.value;
+  const customerSession =
+    await getCustomerSession();
+
+  let authorizedUserId:
+    | string
+    | null = null;
 
   /*
-   * Conhecer o ID cms... não concede
-   * acesso ao pedido.
+   * =====================================================
+   * CLIENTE LOGADO
+   * =====================================================
+   *
+   * Se existe uma sessão válida, somente o userId
+   * daquela sessão poderá ser utilizado.
+   *
+   * IMPORTANTE:
+   *
+   * Não fazemos fallback para token GUEST caso
+   * o cliente esteja logado.
    */
-  if (!accessToken) {
+
+  if (
+    customerSession
+  ) {
+    authorizedUserId =
+      customerSession.userId;
+  } else {
+    /*
+     * ===================================================
+     * VISITANTE
+     * ===================================================
+     *
+     * Sem sessão autenticada, exigimos o token
+     * secreto exclusivo daquele pedido.
+     */
+
+    const cookieStore =
+      await cookies();
+
+    const accessToken =
+      cookieStore.get(
+        getOrderAccessCookieName(
+          id
+        )
+      )?.value;
+
+    /*
+     * Saber apenas cms... nunca é suficiente.
+     */
+
+    if (!accessToken) {
+      notFound();
+    }
+
+    const access =
+      await verifyOrderAccessToken({
+        token:
+          accessToken,
+
+        expectedOrderId:
+          id,
+      });
+
+    if (
+      !access ||
+      access.orderId !== id
+    ) {
+      notFound();
+    }
+
+    authorizedUserId =
+      access.userId;
+  }
+
+  /*
+   * =====================================================
+   * DEFESA FINAL
+   * =====================================================
+   */
+
+  if (
+    !authorizedUserId
+  ) {
     notFound();
   }
 
-  const access =
-    await verifyOrderAccessToken({
-      token: accessToken,
-      expectedOrderId: id,
-    });
-
-  if (!access) {
-    notFound();
-  }
-
   /*
-   * A consulta somente acontece depois
-   * da validação do token.
+   * =====================================================
+   * CONSULTA SEGURA
+   * =====================================================
+   *
+   * A autorização faz parte do WHERE.
+   *
+   * Isso é melhor do que carregar o pedido inteiro
+   * e só depois descobrir que pertence a outra pessoa.
    */
+
   const order =
-    await prisma.order.findUnique({
+    await prisma.order.findFirst({
       where: {
         id,
+
+        userId:
+          authorizedUserId,
       },
 
       select: {
@@ -176,9 +260,14 @@ export default async function UserOrderDetailsPage({
         total: true,
         createdAt: true,
 
-        trackingCode: true,
-        trackingUrl: true,
-        carrier: true,
+        trackingCode:
+          true,
+
+        trackingUrl:
+          true,
+
+        carrier:
+          true,
 
         items: {
           select: {
@@ -191,7 +280,8 @@ export default async function UserOrderDetailsPage({
           },
 
           orderBy: {
-            createdAt: "asc",
+            createdAt:
+              "asc",
           },
         },
 
@@ -204,22 +294,33 @@ export default async function UserOrderDetailsPage({
           },
 
           orderBy: {
-            createdAt: "asc",
+            createdAt:
+              "asc",
           },
         },
       },
     });
 
   /*
-   * Defesa adicional: o proprietário
-   * encontrado pelo token precisa ser o
-   * mesmo proprietário do pedido.
+   * Não diferenciamos:
+   *
+   * - pedido inexistente;
+   * - pedido de outro usuário;
+   * - token inválido;
+   * - sessão inválida.
    */
+
+  if (!order) {
+    notFound();
+  }
+
+  /*
+   * Defesa em profundidade.
+   */
+
   if (
-    !order ||
     order.userId !==
-      access.userId ||
-    access.orderId !== id
+      authorizedUserId
   ) {
     notFound();
   }
@@ -242,7 +343,10 @@ export default async function UserOrderDetailsPage({
           <p className="text-neutral-600">
             Pedido #
             {order.id
-              .slice(0, 8)
+              .slice(
+                0,
+                8
+              )
               .toUpperCase()}{" "}
             ·{" "}
             {formatDate(
@@ -250,6 +354,8 @@ export default async function UserOrderDetailsPage({
             )}
           </p>
         </div>
+
+        {/* STATUS */}
 
         <section className="mb-6 rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -261,7 +367,8 @@ export default async function UserOrderDetailsPage({
               <h2 className="text-[26px] font-extrabold text-[#b98218]">
                 {statusLabels[
                   order.status
-                ] || order.status}
+                ] ||
+                  order.status}
               </h2>
             </div>
 
@@ -278,20 +385,25 @@ export default async function UserOrderDetailsPage({
             </div>
           </div>
 
+          {/* RASTREAMENTO */}
+
           {order.trackingCode && (
             <div className="mt-5 rounded-xl bg-[#faf9f6] p-4">
               <p className="text-sm">
                 <strong>
                   Transportadora:
                 </strong>{" "}
-                {order.carrier || "-"}
+                {order.carrier ||
+                  "-"}
               </p>
 
               <p className="mt-1 text-sm">
                 <strong>
                   Código de rastreio:
                 </strong>{" "}
-                {order.trackingCode}
+                {
+                  order.trackingCode
+                }
               </p>
 
               {safeTrackingUrl && (
@@ -309,6 +421,8 @@ export default async function UserOrderDetailsPage({
             </div>
           )}
         </section>
+
+        {/* HISTÓRICO */}
 
         <section className="mb-6 rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
           <h2 className="mb-6 text-[24px] font-extrabold text-[#20170f]">
@@ -331,7 +445,8 @@ export default async function UserOrderDetailsPage({
                     <div className="h-5 w-5 rounded-full bg-[#b98218]" />
 
                     {index !==
-                      order.history
+                      order
+                        .history
                         .length -
                         1 && (
                       <div className="h-full min-h-[48px] w-[2px] bg-[#e8dcc2]" />
@@ -363,15 +478,19 @@ export default async function UserOrderDetailsPage({
               )
             )}
 
-            {order.history.length ===
+            {order.history
+              .length ===
               0 && (
               <p className="text-sm text-neutral-500">
-                Seu pedido ainda não
-                possui atualizações.
+                Seu pedido ainda
+                não possui
+                atualizações.
               </p>
             )}
           </div>
         </section>
+
+        {/* PRODUTOS */}
 
         <section className="rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
           <h2 className="mb-5 text-[24px] font-extrabold text-[#20170f]">
@@ -382,23 +501,33 @@ export default async function UserOrderDetailsPage({
             {order.items.map(
               (item) => (
                 <div
-                  key={item.id}
+                  key={
+                    item.id
+                  }
                   className="flex items-center gap-4 py-4"
                 >
                   <img
-                    src={item.image}
-                    alt={item.name}
+                    src={
+                      item.image
+                    }
+                    alt={
+                      item.name
+                    }
                     className="h-16 w-16 rounded-xl border object-contain"
                   />
 
                   <div className="min-w-0 flex-1">
                     <strong className="block truncate">
-                      {item.name}
+                      {
+                        item.name
+                      }
                     </strong>
 
                     <p className="text-sm text-neutral-500">
                       Quantidade:{" "}
-                      {item.quantity}
+                      {
+                        item.quantity
+                      }
                     </p>
                   </div>
 

@@ -11,6 +11,13 @@ enum UserRole {
   ADMIN
 }
 
+enum AccountStatus {
+  GUEST
+  PENDING_VERIFICATION
+  ACTIVE
+  DISABLED
+}
+
 enum OrderStatus {
   PENDING
   PAID
@@ -45,12 +52,90 @@ model User {
   cpf      String?
   role     UserRole @default(USER)
 
+  accountStatus     AccountStatus @default(GUEST)
+  emailVerifiedAt   DateTime?
+  passwordChangedAt DateTime?
+  lastLoginAt       DateTime?
+  disabledAt        DateTime?
+
   addresses Address[]
   orders    Order[]
   cartItems CartItem[]
 
+  customerSessions        CustomerSession[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([accountStatus])
+  @@index([emailVerifiedAt])
+}
+
+model CustomerSession {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model EmailVerificationToken {
+  id        String @id @default(cuid())
+  userId    String
+  tokenHash String @unique
+
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, usedAt])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, usedAt])
+  @@index([expiresAt])
+}
+
+model LoginRateLimit {
+  keyHash         String    @id
+  attempts        Int       @default(0)
+  windowStartedAt DateTime
+  blockedUntil    DateTime?
+  expiresAt       DateTime
+  updatedAt       DateTime  @updatedAt
+
+  @@index([expiresAt])
+  @@index([blockedUntil])
 }
 
 model Product {
@@ -106,6 +191,8 @@ model Address {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Order {

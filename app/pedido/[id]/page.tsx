@@ -10,6 +10,10 @@ import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 
 import {
+  getCustomerSession,
+} from "@/lib/customer-auth";
+
+import {
   getOrderAccessCookieName,
   verifyOrderAccessToken,
 } from "@/lib/order-access";
@@ -40,12 +44,18 @@ function isValidOrderId(
 export default async function OrderPage({
   params,
 }: PageProps) {
-  const { id } = await params;
+  const { id } =
+    await params;
 
   /*
-   * Pedido inválido e pedido sem autorização
-   * possuem exatamente o mesmo comportamento.
+   * =====================================================
+   * ID
+   * =====================================================
+   *
+   * Pedido inválido, inexistente e sem autorização
+   * possuem o mesmo comportamento.
    */
+
   if (
     !id ||
     !isValidOrderId(id)
@@ -53,44 +63,117 @@ export default async function OrderPage({
     notFound();
   }
 
-  const cookieStore =
-    await cookies();
+  /*
+   * =====================================================
+   * SESSÃO DO CLIENTE
+   * =====================================================
+   */
 
-  const cookieName =
-    getOrderAccessCookieName(id);
+  const customerSession =
+    await getCustomerSession();
 
-  const accessToken =
-    cookieStore.get(
-      cookieName
-    )?.value;
+  let authorizedUserId:
+    | string
+    | null = null;
 
   /*
-   * O ID cms... sozinho não concede acesso.
-   * O visitante precisa possuir o token
-   * secreto correspondente ao pedido.
+   * =====================================================
+   * CLIENTE LOGADO
+   * =====================================================
+   *
+   * Quando existe uma sessão válida, o acesso
+   * obrigatoriamente pertence ao userId da sessão.
+   *
+   * Não fazemos fallback para token GUEST.
    */
-  if (!accessToken) {
+
+  if (
+    customerSession
+  ) {
+    authorizedUserId =
+      customerSession.userId;
+  } else {
+    /*
+     * ===================================================
+     * VISITANTE
+     * ===================================================
+     *
+     * Cliente sem login precisa possuir o token
+     * secreto e exclusivo daquele pedido.
+     */
+
+    const cookieStore =
+      await cookies();
+
+    const accessToken =
+      cookieStore.get(
+        getOrderAccessCookieName(
+          id
+        )
+      )?.value;
+
+    /*
+     * Conhecer somente o cms... nunca concede
+     * acesso ao pedido.
+     */
+
+    if (!accessToken) {
+      notFound();
+    }
+
+    const access =
+      await verifyOrderAccessToken({
+        token:
+          accessToken,
+
+        expectedOrderId:
+          id,
+      });
+
+    if (
+      !access ||
+      access.orderId !== id
+    ) {
+      notFound();
+    }
+
+    authorizedUserId =
+      access.userId;
+  }
+
+  /*
+   * =====================================================
+   * DEFESA FINAL
+   * =====================================================
+   */
+
+  if (
+    !authorizedUserId
+  ) {
     notFound();
   }
 
-  const access =
-    await verifyOrderAccessToken({
-      token: accessToken,
-      expectedOrderId: id,
-    });
-
-  if (!access) {
-    notFound();
-  }
-
   /*
-   * A consulta seleciona somente os dados
-   * necessários para montar esta página.
+   * =====================================================
+   * CONSULTA SEGURA
+   * =====================================================
+   *
+   * A autorização já faz parte da consulta:
+   *
+   * id + userId
+   *
+   * Assim dados pessoais, endereço, produtos,
+   * pagamento e histórico nunca são carregados
+   * se o proprietário não corresponder.
    */
+
   const order =
-    await prisma.order.findUnique({
+    await prisma.order.findFirst({
       where: {
         id,
+
+        userId:
+          authorizedUserId,
       },
 
       select: {
@@ -123,10 +206,12 @@ export default async function OrderPage({
             cep: true,
             state: true,
             city: true,
-            neighborhood: true,
+            neighborhood:
+              true,
             street: true,
             number: true,
-            complement: true,
+            complement:
+              true,
           },
         },
 
@@ -141,14 +226,16 @@ export default async function OrderPage({
           },
 
           orderBy: {
-            createdAt: "asc",
+            createdAt:
+              "asc",
           },
         },
 
         payment: {
           select: {
             status: true,
-            paymentMethod: true,
+            paymentMethod:
+              true,
           },
         },
 
@@ -162,37 +249,55 @@ export default async function OrderPage({
           },
 
           orderBy: {
-            createdAt: "desc",
+            createdAt:
+              "desc",
           },
         },
       },
     });
 
   /*
-   * Mesmo que alguém consiga usar um token
-   * de outro pedido, o userId também precisa
-   * corresponder ao proprietário encontrado
-   * durante a validação.
+   * Não diferenciamos:
+   *
+   * - pedido inexistente;
+   * - pedido de outro cliente;
+   * - token inválido;
+   * - sessão sem permissão.
    */
+
+  if (!order) {
+    notFound();
+  }
+
+  /*
+   * Defesa adicional.
+   */
+
   if (
-    !order ||
     order.userId !==
-      access.userId ||
-    access.orderId !== id
+      authorizedUserId
   ) {
     notFound();
   }
 
+  /*
+   * =====================================================
+   * OBJETO SEGURO PARA O CLIENT
+   * =====================================================
+   */
+
   const safeOrder: OrderDetailsData = {
-    id: order.id,
+    id:
+      order.id,
 
     /*
-     * O status vem exclusivamente do banco.
+     * Status exclusivamente do banco.
      *
-     * O parâmetro ?status=approved não é
-     * consultado nem utilizado.
+     * ?status=approved não é consultado
+     * nem utilizado em nenhum momento.
      */
-    status: order.status,
+    status:
+      order.status,
 
     createdAt:
       order.createdAt.toISOString(),
@@ -206,16 +311,24 @@ export default async function OrderPage({
       null,
 
     subtotal:
-      Number(order.subtotal),
+      Number(
+        order.subtotal
+      ),
 
     shipping:
-      Number(order.shipping),
+      Number(
+        order.shipping
+      ),
 
     discount:
-      Number(order.discount),
+      Number(
+        order.discount
+      ),
 
     total:
-      Number(order.total),
+      Number(
+        order.total
+      ),
 
     trackingCode:
       order.trackingCode,
@@ -277,12 +390,19 @@ export default async function OrderPage({
     items:
       order.items.map(
         (item) => ({
-          id: item.id,
-          name: item.name,
-          image: item.image,
+          id:
+            item.id,
+
+          name:
+            item.name,
+
+          image:
+            item.image,
 
           price:
-            Number(item.price),
+            Number(
+              item.price
+            ),
 
           quantity:
             item.quantity,
@@ -292,10 +412,17 @@ export default async function OrderPage({
     history:
       order.history.map(
         (entry) => ({
-          id: entry.id,
-          status: entry.status,
-          title: entry.title,
-          message: entry.message,
+          id:
+            entry.id,
+
+          status:
+            entry.status,
+
+          title:
+            entry.title,
+
+          message:
+            entry.message,
 
           createdAt:
             entry.createdAt.toISOString(),
