@@ -7,7 +7,7 @@ import {
 } from "next/navigation";
 
 import Footer from "@/components/Footer";
-import Header from "@/components/Header";
+import Header from "@/components/Header/Header";
 
 import {
   getCustomerSession,

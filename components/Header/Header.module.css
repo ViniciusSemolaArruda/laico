@@ -1,0 +1,1071 @@
+/* =========================================================
+   HEADER
+========================================================= */
+
+.header {
+  position: relative;
+  z-index: 40;
+
+  width: 100%;
+
+  background: #fffdf7;
+
+  box-shadow:
+    0 1px 4px
+    rgba(0, 0, 0, 0.06);
+}
+
+
+/* =========================================================
+   DESKTOP / NOTEBOOK
+========================================================= */
+
+.desktopHeader {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .desktopHeader {
+    display: grid;
+
+    grid-template-columns:
+      minmax(0, 1fr)
+      auto
+      minmax(0, 1fr);
+
+    align-items: center;
+
+    width: 100%;
+    max-width: 1370px;
+    height: 115px;
+
+    margin: 0 auto;
+
+    padding: 0 24px;
+  }
+
+
+  /* =======================================================
+     ESQUERDA
+  ======================================================= */
+
+  .desktopLeft {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+
+    min-width: 0;
+  }
+
+  .searchBox {
+    display: flex;
+    align-items: center;
+
+    width: 320px;
+    max-width: 100%;
+    height: 46px;
+
+    padding: 0 16px;
+
+    border:
+      1px solid
+      #e3c97a;
+
+    border-radius: 10px;
+
+    background: #ffffff;
+
+    color: #cfa74a;
+
+    box-shadow:
+      0 1px 3px
+      rgba(0, 0, 0, 0.08);
+  }
+
+  .searchBox input {
+    flex: 1;
+
+    min-width: 0;
+
+    padding: 0;
+
+    border: 0;
+    outline: none;
+
+    background: transparent;
+
+    color: #9f7a2f;
+
+    font-size: 14px;
+  }
+
+  .searchBox input::placeholder {
+    color: #c9b27b;
+  }
+
+
+  /* =======================================================
+     LOGO CENTRAL
+
+     Como as duas colunas laterais são iguais (1fr),
+     essa coluna fica exatamente no centro.
+  ======================================================= */
+
+  .desktopLogo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    justify-self: center;
+  }
+
+  .desktopLogo img {
+    display: block;
+
+    width: 270px;
+    height: auto;
+
+    object-fit: contain;
+
+    mix-blend-mode: multiply;
+  }
+
+
+  /* =======================================================
+     DIREITA
+  ======================================================= */
+
+  .desktopActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+
+    justify-self: end;
+
+    min-width: 0;
+
+    gap: 26px;
+
+    color: #b58b36;
+
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .favoriteButton {
+    display: flex;
+    align-items: center;
+
+    gap: 8px;
+
+    padding: 0;
+
+    border: 0;
+
+    background: transparent;
+
+    color: inherit;
+
+    font: inherit;
+
+    white-space: nowrap;
+
+    cursor: pointer;
+
+    transition:
+      color 0.2s ease;
+  }
+
+  .favoriteButton:hover {
+    color: #d4af37;
+  }
+
+
+  /* =======================================================
+     CONTA
+  ======================================================= */
+
+  .account {
+    display: flex;
+    align-items: center;
+
+    gap: 8px;
+
+    color: inherit;
+
+    transition:
+      color 0.2s ease;
+  }
+
+  .account:hover {
+    color: #d4af37;
+  }
+
+  .account svg {
+    flex-shrink: 0;
+  }
+
+  .accountLogged {
+    white-space: nowrap;
+  }
+
+  .accountGuest {
+    display: flex;
+    flex-direction: column;
+
+    line-height: 1.3;
+
+    white-space: nowrap;
+  }
+
+  .accountGuest span {
+    display: block;
+  }
+
+  .accountLoading {
+    display: block;
+
+    width: 105px;
+    height: 16px;
+
+    border-radius: 5px;
+
+    background: #eadfbf;
+
+    animation:
+      accountPulse
+      1.2s
+      ease-in-out
+      infinite;
+  }
+
+
+  /* =======================================================
+     CARRINHO
+  ======================================================= */
+
+  .cartButton {
+    position: relative;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    flex-shrink: 0;
+
+    width: 40px;
+    height: 40px;
+
+    color: inherit;
+
+    transition:
+      color 0.2s ease;
+  }
+
+  .cartButton:hover {
+    color: #d4af37;
+  }
+}
+
+
+/* =========================================================
+   NOTEBOOK MENOR
+========================================================= */
+
+@media
+  (min-width: 1024px) and
+  (max-width: 1199px) {
+
+  .desktopHeader {
+    padding:
+      0
+      20px;
+  }
+
+  .searchBox {
+    width: 255px;
+  }
+
+  .desktopLogo img {
+    width: 220px;
+  }
+
+  .desktopActions {
+    gap: 14px;
+
+    font-size: 12px;
+  }
+}
+
+
+/* =========================================================
+   DESKTOP GRANDE
+========================================================= */
+
+@media (min-width: 1400px) {
+  .desktopActions {
+    gap: 30px;
+
+    font-size: 15px;
+  }
+}
+
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+.mobileHeader {
+  width: 100%;
+
+  padding:
+    8px
+    16px
+    16px;
+
+  border-bottom:
+    1px solid
+    #f3e7c7;
+
+  background: #fffdf7;
+}
+
+
+/* =========================================================
+   PRIMEIRA LINHA MOBILE
+========================================================= */
+
+.mobileTop {
+  display: grid;
+
+  grid-template-columns:
+    48px
+    minmax(0, 1fr)
+    48px;
+
+  align-items: center;
+
+  width: 100%;
+  height: 76px;
+}
+
+.mobileMenuButton {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+
+  width: 48px;
+  height: 48px;
+
+  padding: 0;
+
+  border: 0;
+
+  background: transparent;
+
+  color: #b58b36;
+
+  cursor: pointer;
+
+  transition:
+    color 0.2s ease;
+}
+
+.mobileMenuButton:hover {
+  color: #d4af37;
+}
+
+
+/* =========================================================
+   LOGO MOBILE
+========================================================= */
+
+.mobileLogo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 0;
+}
+
+.mobileLogo img {
+  display: block;
+
+  width: 160px;
+  max-width: 100%;
+  height: auto;
+
+  object-fit: contain;
+
+  mix-blend-mode: multiply;
+}
+
+
+/* =========================================================
+   CARRINHO MOBILE
+========================================================= */
+
+.mobileCartButton {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  justify-self: end;
+
+  width: 48px;
+  height: 48px;
+
+  color: #b58b36;
+
+  transition:
+    color 0.2s ease;
+}
+
+.mobileCartButton:hover {
+  color: #d4af37;
+}
+
+
+/* =========================================================
+   BADGE CARRINHO
+========================================================= */
+
+.cartBadge {
+  position: absolute;
+
+  top: 1px;
+  right: -3px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 19px;
+  height: 19px;
+
+  padding: 0 4px;
+
+  border-radius: 999px;
+
+  background:
+    linear-gradient(
+      to bottom,
+      #f3de9b,
+      #cfa74a
+    );
+
+  color: #ffffff;
+
+  font-size: 10px;
+  font-weight: 800;
+
+  line-height: 1;
+
+  box-shadow:
+    0 1px 3px
+    rgba(0, 0, 0, 0.15);
+}
+
+
+/* =========================================================
+   BUSCA MOBILE
+========================================================= */
+
+.mobileSearch {
+  display: flex;
+  align-items: center;
+
+  width: 100%;
+  height: 44px;
+
+  padding: 0 14px;
+
+  border:
+    1px solid
+    #e3c97a;
+
+  border-radius: 10px;
+
+  background: #ffffff;
+
+  color: #cfa74a;
+
+  box-shadow:
+    0 1px 3px
+    rgba(0, 0, 0, 0.08);
+}
+
+.mobileSearch input {
+  flex: 1;
+
+  min-width: 0;
+
+  padding: 0;
+
+  border: 0;
+  outline: 0;
+
+  background: transparent;
+
+  color: #9f7a2f;
+
+  font-size: 14px;
+}
+
+.mobileSearch input::placeholder {
+  color: #c9b27b;
+}
+
+
+/* =========================================================
+   ESCONDE MOBILE NO DESKTOP
+========================================================= */
+
+@media (min-width: 1024px) {
+  .mobileHeader {
+    display: none;
+  }
+}
+
+
+/* =========================================================
+   MOBILE PEQUENO
+========================================================= */
+
+@media (max-width: 400px) {
+  .mobileHeader {
+    padding:
+      7px
+      14px
+      14px;
+  }
+
+  .mobileTop {
+    grid-template-columns:
+      44px
+      minmax(0, 1fr)
+      44px;
+
+    height: 70px;
+  }
+
+  .mobileMenuButton,
+  .mobileCartButton {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mobileLogo img {
+    width: 145px;
+  }
+
+  .mobileSearch {
+    height: 43px;
+  }
+
+  .mobileSearch input {
+    font-size: 13px;
+  }
+}
+
+
+/* =========================================================
+   NAVEGAÇÃO DESKTOP
+========================================================= */
+
+.navigation {
+  display: none;
+
+  overflow-x: auto;
+
+  border-top:
+    1px solid
+    #f3e7c7;
+
+  border-bottom:
+    1px solid
+    #f3e7c7;
+
+  background: #fffdf7;
+}
+
+.navigationInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  width: 100%;
+  max-width: 1370px;
+  height: 56px;
+
+  margin: 0 auto;
+
+  padding: 0 24px;
+
+  gap: 20px;
+
+  white-space: nowrap;
+}
+
+.navigationItem {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  align-self: stretch;
+
+  padding:
+    0
+    10px;
+
+  border: 0;
+
+  background: transparent;
+
+  color: #9f7a2f;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  letter-spacing: 0.6px;
+
+  text-transform: uppercase;
+
+  cursor: pointer;
+
+  transition:
+    color 0.2s ease;
+}
+
+.navigationItem:hover {
+  color: #d4af37;
+}
+
+.navigationItemActive {
+  color: #cfa74a;
+}
+
+.activeLine {
+  position: absolute;
+
+  right: 0;
+  bottom: 0;
+  left: 0;
+
+  height: 3px;
+
+  border-radius: 999px;
+
+  background:
+    linear-gradient(
+      to right,
+      #f3de9b,
+      #cfa74a
+    );
+}
+
+@media (min-width: 1024px) {
+  .navigation {
+    display: block;
+  }
+}
+
+@media
+  (min-width: 1024px) and
+  (max-width: 1199px) {
+
+  .navigationInner {
+    gap: 8px;
+
+    padding:
+      0
+      18px;
+  }
+
+  .navigationItem {
+    padding:
+      0
+      5px;
+
+    font-size: 11px;
+
+    letter-spacing:
+      0.3px;
+  }
+}
+
+
+/* =========================================================
+   MENU MOBILE - OVERLAY
+========================================================= */
+
+.mobileMenuOverlay {
+  position: fixed;
+  z-index: 100;
+
+  inset: 0;
+
+  visibility: hidden;
+
+  opacity: 0;
+
+  pointer-events: none;
+
+  transition:
+    visibility 0.3s ease,
+    opacity 0.3s ease;
+}
+
+.mobileMenuOverlayOpen {
+  visibility: visible;
+
+  opacity: 1;
+
+  pointer-events: auto;
+}
+
+
+/* =========================================================
+   FUNDO ESCURO
+========================================================= */
+
+.mobileBackdrop {
+  position: absolute;
+
+  inset: 0;
+
+  width: 100%;
+  height: 100%;
+
+  padding: 0;
+
+  border: 0;
+
+  background:
+    rgba(
+      0,
+      0,
+      0,
+      0.4
+    );
+
+  cursor: pointer;
+}
+
+
+/* =========================================================
+   PAINEL MOBILE
+========================================================= */
+
+.mobileMenuPanel {
+  position: absolute;
+
+  top: 0;
+  bottom: 0;
+  left: 0;
+
+  width: min(
+    320px,
+    88vw
+  );
+
+  overflow-y: auto;
+
+  background: #fffdf7;
+
+  box-shadow:
+    5px
+    0
+    24px
+    rgba(0, 0, 0, 0.18);
+
+  transform:
+    translateX(-100%);
+
+  transition:
+    transform
+    0.3s
+    ease;
+}
+
+.mobileMenuPanelOpen {
+  transform:
+    translateX(0);
+}
+
+
+/* =========================================================
+   CABEÇALHO MENU MOBILE
+========================================================= */
+
+.mobileMenuHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  height: 80px;
+
+  padding: 0 20px;
+
+  border-bottom:
+    1px solid
+    #f3e7c7;
+}
+
+.mobileMenuLogo {
+  display: flex;
+  align-items: center;
+}
+
+.mobileMenuLogo img {
+  display: block;
+
+  width: 140px;
+  height: auto;
+
+  object-fit: contain;
+
+  mix-blend-mode: multiply;
+}
+
+.closeMenuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 42px;
+  height: 42px;
+
+  padding: 0;
+
+  border: 0;
+
+  background: transparent;
+
+  color: #b58b36;
+
+  cursor: pointer;
+
+  transition:
+    color 0.2s ease;
+}
+
+.closeMenuButton:hover {
+  color: #d4af37;
+}
+
+
+/* =========================================================
+   CATEGORIAS MOBILE
+========================================================= */
+
+.mobileCategories {
+  padding: 16px 0;
+}
+
+.mobileCategory {
+  display: flex;
+  align-items: center;
+
+  width: 100%;
+  height: 54px;
+
+  padding: 0 20px;
+
+  border: 0;
+  border-bottom:
+    1px solid
+    #f7edd5;
+
+  background: transparent;
+
+  color: #9f7a2f;
+
+  font-size: 14px;
+  font-weight: 600;
+
+  letter-spacing:
+    0.5px;
+
+  text-align: left;
+
+  text-transform:
+    uppercase;
+
+  cursor: pointer;
+
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+}
+
+.mobileCategory:hover {
+  background: #fff5de;
+
+  color: #cfa74a;
+}
+
+.mobileCategoryActive {
+  background: #fff8e8;
+
+  color: #cfa74a;
+}
+
+
+/* =========================================================
+   AÇÕES MENU MOBILE
+========================================================= */
+
+.mobileMenuActions {
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+
+  padding:
+    20px;
+
+  border-top:
+    1px solid
+    #f3e7c7;
+}
+
+.mobileMenuAction {
+  display: flex;
+  align-items: center;
+
+  min-height: 44px;
+
+  gap: 12px;
+
+  padding: 0;
+
+  border: 0;
+
+  background: transparent;
+
+  color: #9f7a2f;
+
+  font-size: 14px;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  transition:
+    color 0.2s ease;
+}
+
+.mobileMenuAction:hover {
+  color: #cfa74a;
+}
+
+.mobileMenuAction svg {
+  flex-shrink: 0;
+}
+
+.mobileAccountGuest {
+  display: flex;
+  flex-direction: column;
+
+  line-height: 1.35;
+}
+
+.mobileAccountLoading {
+  display: block;
+
+  width: 140px;
+  height: 15px;
+
+  border-radius: 4px;
+
+  background: #eadfbf;
+
+  animation:
+    accountPulse
+    1.2s
+    ease-in-out
+    infinite;
+}
+
+
+/* =========================================================
+   CARRINHO MENU LATERAL
+========================================================= */
+
+.mobileMenuCart {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+}
+
+.drawerCartBadge {
+  position: absolute;
+
+  top: -8px;
+  right: -12px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 17px;
+  height: 17px;
+
+  padding: 0 4px;
+
+  border-radius: 999px;
+
+  background: #cfa74a;
+
+  color: #ffffff;
+
+  font-size: 9px;
+  font-weight: 700;
+}
+
+
+/* =========================================================
+   LOADING CONTA
+========================================================= */
+
+@keyframes accountPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+
+/* =========================================================
+   ACESSIBILIDADE
+========================================================= */
+
+@media (
+  prefers-reduced-motion:
+    reduce
+) {
+  .mobileMenuOverlay,
+  .mobileMenuPanel,
+  .favoriteButton,
+  .account,
+  .cartButton,
+  .mobileMenuButton,
+  .mobileCartButton {
+    transition: none;
+  }
+
+  .accountLoading,
+  .mobileAccountLoading {
+    animation: none;
+  }
+}

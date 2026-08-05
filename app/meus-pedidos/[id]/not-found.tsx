@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 
 import Footer from "@/components/Footer";
-import Header from "@/components/Header";
+import Header from "@/components/Header/Header";
 
 export default function OrderAccessDeniedPage() {
   return (

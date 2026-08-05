@@ -16,7 +16,7 @@ import AccountPasswordForm from "@/components/account/AccountPasswordForm";
 import AccountProfileForm from "@/components/account/AccountProfileForm";
 
 import Footer from "@/components/Footer";
-import Header from "@/components/Header";
+import Header from "@/components/Header/Header";
 
 import { getCustomerSession } from "@/lib/customer-auth";
 import { prisma } from "@/lib/prisma";
