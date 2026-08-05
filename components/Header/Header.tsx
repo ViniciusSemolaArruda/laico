@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  Heart,
   Menu,
+  Phone,
   Search,
   ShoppingCart,
   User,
@@ -32,7 +32,9 @@ function getStoredCartCount() {
 
   try {
     const storedCart =
-      window.localStorage.getItem("laico-cart");
+      window.localStorage.getItem(
+        "laico-cart"
+      );
 
     if (!storedCart) {
       return 0;
@@ -46,7 +48,10 @@ function getStoredCartCount() {
     }
 
     return parsed.reduce(
-      (total, item: unknown) => {
+      (
+        total,
+        item: unknown
+      ) => {
         if (
           typeof item !== "object" ||
           item === null ||
@@ -68,7 +73,10 @@ function getStoredCartCount() {
           return total;
         }
 
-        return total + Math.floor(quantity);
+        return (
+          total +
+          Math.floor(quantity)
+        );
       },
       0
     );
@@ -78,11 +86,15 @@ function getStoredCartCount() {
 }
 
 export default function Header() {
-  const [menuOpen, setMenuOpen] =
-    useState(false);
+  const [
+    menuOpen,
+    setMenuOpen,
+  ] = useState(false);
 
-  const [cartCount, setCartCount] =
-    useState(0);
+  const [
+    cartCount,
+    setCartCount,
+  ] = useState(0);
 
   const [
     sessionLoaded,
@@ -94,8 +106,10 @@ export default function Header() {
     setAuthenticated,
   ] = useState(false);
 
-  const [firstName, setFirstName] =
-    useState("");
+  const [
+    firstName,
+    setFirstName,
+  ] = useState("");
 
   const menuItems = [
     "Todos",
@@ -192,9 +206,13 @@ export default function Header() {
             "/api/auth/session",
             {
               method: "GET",
+
               credentials:
                 "same-origin",
-              cache: "no-store",
+
+              cache:
+                "no-store",
+
               signal:
                 controller.signal,
             }
@@ -202,6 +220,7 @@ export default function Header() {
 
         if (!response.ok) {
           setAuthenticated(false);
+
           return;
         }
 
@@ -233,7 +252,9 @@ export default function Header() {
 
         setAuthenticated(false);
       } finally {
-        if (!controller.signal.aborted) {
+        if (
+          !controller.signal.aborted
+        ) {
           setSessionLoaded(true);
         }
       }
@@ -248,7 +269,7 @@ export default function Header() {
 
   /*
    * =======================================================
-   * CONTA
+   * VALORES
    * =======================================================
    */
 
@@ -257,19 +278,28 @@ export default function Header() {
       ? "/minha-conta"
       : "/entrar";
 
+  const cartLabel =
+    cartCount > 99
+      ? "99+"
+      : cartCount;
+
   return (
     <>
       <header className={styles.header}>
-        {/* FAIXA PROMOCIONAL */}
+        {/* =================================================
+            FAIXA PROMOCIONAL
+        ================================================= */}
 
         <PromotionalBar />
 
         {/* =================================================
-            NOTEBOOK / DESKTOP
+            DESKTOP / NOTEBOOK
         ================================================= */}
 
         <div className={styles.desktopHeader}>
-          {/* ESQUERDA - BUSCA */}
+          {/* ===============================================
+              ESQUERDA - BUSCA
+          ================================================ */}
 
           <div className={styles.desktopLeft}>
             <div className={styles.searchBox}>
@@ -283,7 +313,9 @@ export default function Header() {
             </div>
           </div>
 
-          {/* CENTRO - LOGO */}
+          {/* ===============================================
+              CENTRO - LOGO
+          ================================================ */}
 
           <Link
             href="/"
@@ -296,65 +328,121 @@ export default function Header() {
             />
           </Link>
 
-          {/* DIREITA - AÇÕES */}
+          {/* ===============================================
+              DIREITA
+          ================================================ */}
 
           <div className={styles.desktopActions}>
-            <button
-              type="button"
-              className={styles.favoriteButton}
-            >
-              <Heart size={22} />
-
-              <span>Favoritos</span>
-            </button>
+            {/* FALE CONOSCO */}
 
             <Link
-              href={accountHref}
-              className={styles.account}
+              href="/contato"
+              className={styles.contact}
             >
-              <User size={22} />
+              <Phone
+                size={27}
+                strokeWidth={1.8}
+              />
 
-              {sessionLoaded ? (
-                authenticated ? (
-                  <span className={styles.accountLogged}>
+              <span className={styles.contactText}>
+                <strong>
+                  Fale Conosco
+                </strong>
+
+                <span>
+                  Clique aqui
+                </span>
+              </span>
+            </Link>
+
+            {/* CONTA */}
+
+            {sessionLoaded ? (
+              authenticated ? (
+                <Link
+                  href="/minha-conta"
+                  className={
+                    styles.accountLoggedLink
+                  }
+                >
+                  <User
+                    size={24}
+                    strokeWidth={1.8}
+                  />
+
+                  <span>
                     Olá, {firstName}
                   </span>
-                ) : (
-                  <span className={styles.accountGuest}>
-                    <span>
-                      Cadastre-se ou
-                    </span>
-
-                    <span>
-                      faça login
-                    </span>
-                  </span>
-                )
+                </Link>
               ) : (
+                <div
+                  className={
+                    styles.accountGuestWrapper
+                  }
+                >
+                  <User
+                    size={26}
+                    strokeWidth={1.8}
+                  />
+
+                  <div
+                    className={
+                      styles.accountGuest
+                    }
+                  >
+                    <Link
+                      href="/criar-conta"
+                      className={
+                        styles.accountGuestLink
+                      }
+                    >
+                      Cadastre-se
+                    </Link>
+
+                    <Link
+                      href="/entrar"
+                      className={
+                        styles.accountGuestLink
+                      }
+                    >
+                      faça seu login
+                    </Link>
+                  </div>
+                </div>
+              )
+            ) : (
+              <div
+                className={
+                  styles.accountLoadingWrapper
+                }
+              >
+                <User
+                  size={26}
+                  strokeWidth={1.8}
+                />
+
                 <span
                   className={
                     styles.accountLoading
                   }
                 />
-              )}
-            </Link>
+              </div>
+            )}
+
+            {/* CARRINHO */}
 
             <Link
               href="/carrinho"
               aria-label={`Carrinho com ${cartCount} produto(s)`}
               className={styles.cartButton}
             >
-              <ShoppingCart size={26} />
+              <ShoppingCart size={27} />
 
-              {cartCount > 0 && (
-                <span
-                  className={styles.cartBadge}
-                >
-                  {cartCount > 99
-                    ? "99+"
-                    : cartCount}
-                </span>
-              )}
+              <span
+                className={styles.cartBadge}
+              >
+                {cartLabel}
+              </span>
             </Link>
           </div>
         </div>
@@ -367,6 +455,8 @@ export default function Header() {
           {/* MENU | LOGO | CARRINHO */}
 
           <div className={styles.mobileTop}>
+            {/* MENU */}
+
             <button
               type="button"
               onClick={() =>
@@ -380,16 +470,22 @@ export default function Header() {
               <Menu size={27} />
             </button>
 
+            {/* LOGO */}
+
             <Link
               href="/"
               aria-label="Página inicial"
-              className={styles.mobileLogo}
+              className={
+                styles.mobileLogo
+              }
             >
               <img
                 src="/logo3.png"
                 alt="Laico"
               />
             </Link>
+
+            {/* CARRINHO */}
 
             <Link
               href="/carrinho"
@@ -400,15 +496,11 @@ export default function Header() {
             >
               <ShoppingCart size={27} />
 
-              {cartCount > 0 && (
-                <span
-                  className={styles.cartBadge}
-                >
-                  {cartCount > 99
-                    ? "99+"
-                    : cartCount}
-                </span>
-              )}
+              <span
+                className={styles.cartBadge}
+              >
+                {cartLabel}
+              </span>
             </Link>
           </div>
 
@@ -426,34 +518,38 @@ export default function Header() {
         </div>
 
         {/* =================================================
-            NAVEGAÇÃO DESKTOP
+            NAVEGAÇÃO
         ================================================= */}
 
         <nav className={styles.navigation}>
           <div className={styles.navigationInner}>
-            {menuItems.map((item) => (
-              <button
-                type="button"
-                key={item}
-                className={`${styles.navigationItem} ${
-                  item ===
-                  "Artigos Religiosos"
-                    ? styles.navigationItemActive
-                    : ""
-                }`}
-              >
-                {item}
+            {menuItems.map(
+              (item) => (
+                <button
+                  type="button"
+                  key={item}
+                  className={`${
+                    styles.navigationItem
+                  } ${
+                    item ===
+                    "Artigos Religiosos"
+                      ? styles.navigationItemActive
+                      : ""
+                  }`}
+                >
+                  {item}
 
-                {item ===
-                  "Artigos Religiosos" && (
-                  <span
-                    className={
-                      styles.activeLine
-                    }
-                  />
-                )}
-              </button>
-            ))}
+                  {item ===
+                    "Artigos Religiosos" && (
+                    <span
+                      className={
+                        styles.activeLine
+                      }
+                    />
+                  )}
+                </button>
+              )
+            )}
           </div>
         </nav>
       </header>
@@ -463,7 +559,9 @@ export default function Header() {
       =================================================== */}
 
       <div
-        className={`${styles.mobileMenuOverlay} ${
+        className={`${
+          styles.mobileMenuOverlay
+        } ${
           menuOpen
             ? styles.mobileMenuOverlayOpen
             : ""
@@ -474,7 +572,9 @@ export default function Header() {
         <button
           type="button"
           aria-label="Fechar menu"
-          className={styles.mobileBackdrop}
+          className={
+            styles.mobileBackdrop
+          }
           onClick={() =>
             setMenuOpen(false)
           }
@@ -483,7 +583,9 @@ export default function Header() {
         {/* PAINEL */}
 
         <aside
-          className={`${styles.mobileMenuPanel} ${
+          className={`${
+            styles.mobileMenuPanel
+          } ${
             menuOpen
               ? styles.mobileMenuPanelOpen
               : ""
@@ -527,25 +629,25 @@ export default function Header() {
 
           {/* CATEGORIAS */}
 
-          <div
-            className={
-              styles.mobileCategories
-            }
-          >
-            {menuItems.map((item) => (
-              <button
-                type="button"
-                key={item}
-                className={`${styles.mobileCategory} ${
-                  item ===
-                  "Artigos Religiosos"
-                    ? styles.mobileCategoryActive
-                    : ""
-                }`}
-              >
-                {item}
-              </button>
-            ))}
+          <div className={styles.mobileCategories}>
+            {menuItems.map(
+              (item) => (
+                <button
+                  type="button"
+                  key={item}
+                  className={`${
+                    styles.mobileCategory
+                  } ${
+                    item ===
+                    "Artigos Religiosos"
+                      ? styles.mobileCategoryActive
+                      : ""
+                  }`}
+                >
+                  {item}
+                </button>
+              )
+            )}
           </div>
 
           {/* AÇÕES */}
@@ -555,56 +657,96 @@ export default function Header() {
               styles.mobileMenuActions
             }
           >
-            <button
-              type="button"
-              className={
-                styles.mobileMenuAction
-              }
-            >
-              <Heart size={20} />
-
-              <span>Favoritos</span>
-            </button>
+            {/* FALE CONOSCO */}
 
             <Link
-              href={accountHref}
+              href="/contato"
               onClick={() =>
                 setMenuOpen(false)
               }
-              className={
-                styles.mobileMenuAction
-              }
+              className={styles.mobileContact}
             >
-              <User size={20} />
+              <Phone
+                size={21}
+                strokeWidth={1.8}
+              />
 
-              {sessionLoaded ? (
-                authenticated ? (
+              <span>
+                <strong>
+                  Fale Conosco
+                </strong>
+
+                <small>
+                  Clique aqui
+                </small>
+              </span>
+            </Link>
+
+            {/* CONTA */}
+
+            {sessionLoaded ? (
+              authenticated ? (
+                <Link
+                  href={accountHref}
+                  onClick={() =>
+                    setMenuOpen(false)
+                  }
+                  className={
+                    styles.mobileMenuAction
+                  }
+                >
+                  <User size={20} />
+
                   <span>
                     Olá, {firstName}
                   </span>
-                ) : (
-                  <span
-                    className={
-                      styles.mobileAccountGuest
-                    }
-                  >
-                    <span>
-                      Cadastre-se ou
-                    </span>
-
-                    <span>
-                      faça login
-                    </span>
-                  </span>
-                )
+                </Link>
               ) : (
+                <div
+                  className={
+                    styles.mobileGuestAccount
+                  }
+                >
+                  <User size={20} />
+
+                  <div>
+                    <Link
+                      href="/criar-conta"
+                      onClick={() =>
+                        setMenuOpen(false)
+                      }
+                    >
+                      Cadastre-se
+                    </Link>
+
+                    <Link
+                      href="/entrar"
+                      onClick={() =>
+                        setMenuOpen(false)
+                      }
+                    >
+                      faça seu login
+                    </Link>
+                  </div>
+                </div>
+              )
+            ) : (
+              <div
+                className={
+                  styles.mobileMenuAction
+                }
+              >
+                <User size={20} />
+
                 <span
                   className={
                     styles.mobileAccountLoading
                   }
                 />
-              )}
-            </Link>
+              </div>
+            )}
+
+            {/* CARRINHO */}
 
             <Link
               href="/carrinho"
@@ -617,25 +759,23 @@ export default function Header() {
             >
               <span
                 className={
-                  styles.mobileMenuCart
+                  styles.mobileDrawerCart
                 }
               >
                 <ShoppingCart size={20} />
 
-                {cartCount > 0 && (
-                  <span
-                    className={
-                      styles.drawerCartBadge
-                    }
-                  >
-                    {cartCount > 99
-                      ? "99+"
-                      : cartCount}
-                  </span>
-                )}
+                <span
+                  className={
+                    styles.drawerCartBadge
+                  }
+                >
+                  {cartLabel}
+                </span>
               </span>
 
-              <span>Ver carrinho</span>
+              <span>
+                Ver carrinho
+              </span>
             </Link>
           </div>
         </aside>
