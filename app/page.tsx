@@ -1,4 +1,5 @@
-//app\page.tsx
+// app/page.tsx
+
 /* eslint-disable react/jsx-key */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -99,143 +100,391 @@ const products = [
   },
 ];
 
-function ProductCard({ product }: { product: any }) {
+
+/* =========================================================
+   CARD DO PRODUTO
+========================================================= */
+
+function ProductCard({
+  product,
+}: {
+  product: any;
+}) {
   return (
     <Link
       href={`/produtos/${product.slug}`}
-      className="block bg-white border border-[#f0e3c2] rounded-[8px] min-h-[410px] p-4 relative shadow-[0_2px_10px_rgba(207,167,74,0.08)] hover:shadow-[0_8px_22px_rgba(207,167,74,0.18)] transition"
+      className="
+        relative
+        block
+        min-w-0
+        overflow-hidden
+        rounded-[8px]
+        border
+        border-[#f0e3c2]
+        bg-white
+        p-2.5
+        shadow-[0_2px_10px_rgba(207,167,74,0.08)]
+        transition
+
+        hover:shadow-[0_8px_22px_rgba(207,167,74,0.18)]
+
+        sm:min-h-[410px]
+        sm:p-4
+      "
     >
+      {/* BADGE */}
+
       {product.badge && (
         <span
-          className={`absolute top-5 left-5 text-white text-[11px] font-bold px-2 py-1 rounded-sm ${
-            product.badge === "REPOSIÇÃO" ? "bg-[#0071bc]" : "bg-[#168a2f]"
-          }`}
+          className={`
+            absolute
+            left-2
+            top-2
+            z-10
+            rounded-sm
+            px-1.5
+            py-1
+            text-[8px]
+            font-bold
+            text-white
+
+            sm:left-5
+            sm:top-5
+            sm:px-2
+            sm:text-[11px]
+
+            ${
+              product.badge ===
+              "REPOSIÇÃO"
+                ? "bg-[#0071bc]"
+                : "bg-[#168a2f]"
+            }
+          `}
         >
           {product.badge}
         </span>
       )}
 
+      {/* DESCONTO */}
+
       {product.discount && (
-        <span className="absolute top-5 right-5 bg-[#e6007e] text-white text-[12px] font-bold px-3 py-1 rounded-full">
+        <span
+          className="
+            absolute
+            right-2
+            top-2
+            z-10
+            rounded-full
+            bg-[#e6007e]
+            px-1.5
+            py-1
+            text-[8px]
+            font-bold
+            text-white
+
+            sm:right-5
+            sm:top-5
+            sm:px-3
+            sm:text-[12px]
+          "
+        >
           {product.discount}
         </span>
       )}
 
-      <div className="h-[210px] flex items-center justify-center mt-2">
+      {/* IMAGEM */}
+
+      <div
+        className="
+          mt-2
+          flex
+          h-[135px]
+          w-full
+          items-center
+          justify-center
+
+          sm:h-[210px]
+        "
+      >
         <img
           src={product.image}
           alt={product.name}
-          className="max-h-[190px] max-w-[190px] object-contain mix-blend-multiply"
+          className="
+            max-h-[120px]
+            max-w-full
+            object-contain
+            mix-blend-multiply
+
+            sm:max-h-[190px]
+            sm:max-w-[190px]
+          "
         />
       </div>
 
-      <div className="text-[#f3c95f] text-[20px] leading-none mt-3">
+      {/* ESTRELAS */}
+
+      <div
+        className="
+          mt-2
+          whitespace-nowrap
+          text-[13px]
+          leading-none
+          tracking-[-1px]
+          text-[#f3c95f]
+
+          sm:mt-3
+          sm:text-[20px]
+          sm:tracking-normal
+        "
+      >
         ★★★★★
       </div>
 
-      <h3 className="mt-3 text-[17px] leading-[21px] font-medium min-h-[44px] text-[#20170f]">
+      {/* NOME */}
+
+      <h3
+        className="
+          mt-2
+          min-h-[52px]
+          text-[13px]
+          font-medium
+          leading-[17px]
+          text-[#20170f]
+
+          sm:mt-3
+          sm:min-h-[44px]
+          sm:text-[17px]
+          sm:leading-[21px]
+        "
+      >
         {product.name}
       </h3>
 
-      <p className="mt-3 text-[13px] text-[#6f5a28]">Cód: {product.code}</p>
+      {/* CÓDIGO */}
+
+      <p
+        className="
+          mt-2
+          text-[10px]
+          text-[#6f5a28]
+
+          sm:mt-3
+          sm:text-[13px]
+        "
+      >
+        Cód: {product.code}
+      </p>
+
+      {/* PREÇO ANTIGO */}
 
       {product.old && (
-        <p className="mt-2 text-[13px] text-neutral-500 line-through">
+        <p
+          className="
+            mt-1
+            text-[10px]
+            text-neutral-500
+            line-through
+
+            sm:mt-2
+            sm:text-[13px]
+          "
+        >
           {product.old}
         </p>
       )}
 
-      <p className="mt-1 text-[22px] font-bold text-[#cfa74a]">
-        {product.price}
-        <span className="text-[13px] text-[#cfa74a]"> /12un.</span>
-        <span className="text-[13px] text-neutral-700"> no PIX</span>
+      {/* PREÇO */}
+
+      <p
+        className="
+          mt-1
+          leading-tight
+          text-[#cfa74a]
+        "
+      >
+        <strong
+          className="
+            text-[17px]
+
+            sm:text-[22px]
+          "
+        >
+          {product.price}
+        </strong>
+
+        <span
+          className="
+            ml-1
+            text-[10px]
+            text-[#cfa74a]
+
+            sm:text-[13px]
+          "
+        >
+          /12un.
+        </span>
+
+        <span
+          className="
+            ml-1
+            text-[10px]
+            text-neutral-700
+
+            sm:text-[13px]
+          "
+        >
+          no PIX
+        </span>
       </p>
 
-      <p className="text-[13px] text-neutral-500">
+      {/* PARCELAMENTO */}
+
+      <p
+        className="
+          mt-1
+          text-[10px]
+          leading-[14px]
+          text-neutral-500
+
+          sm:text-[13px]
+        "
+      >
         6x de R$10,58 sem juros
       </p>
 
-      <p className="mt-3 text-[14px] font-bold text-[#9f7a2f]">ATACADO</p>
+      {/* ATACADO */}
 
-      <p className="text-[14px] text-[#20170f]">R$55,20</p>
+      <p
+        className="
+          mt-2
+          text-[11px]
+          font-bold
+          text-[#9f7a2f]
+
+          sm:mt-3
+          sm:text-[14px]
+        "
+      >
+        ATACADO
+      </p>
+
+      <p
+        className="
+          text-[12px]
+          text-[#20170f]
+
+          sm:text-[14px]
+        "
+      >
+        R$55,20
+      </p>
     </Link>
   );
 }
 
+
+/* =========================================================
+   FILTRO
+========================================================= */
+
 function FilterBox() {
   return (
-    <aside className="w-[315px] bg-white border border-[#f0e3c2] rounded-[8px] overflow-hidden sticky top-6 shadow-[0_2px_10px_rgba(207,167,74,0.08)]">
-      <div className="h-[58px] flex items-center gap-3 px-6 border-b border-[#f0e3c2] text-[#9f7a2f]">
+    <aside className="sticky top-6 w-[315px] overflow-hidden rounded-[8px] border border-[#f0e3c2] bg-white shadow-[0_2px_10px_rgba(207,167,74,0.08)]">
+      <div className="flex h-[58px] items-center gap-3 border-b border-[#f0e3c2] px-6 text-[#9f7a2f]">
         <SlidersHorizontal size={20} />
-        <strong className="uppercase text-[16px]">Filtrar Produtos</strong>
+
+        <strong className="text-[16px] uppercase">
+          Filtrar Produtos
+        </strong>
       </div>
 
-      <div className="p-6 border-b border-[#f0e3c2]">
-        <div className="flex justify-between mb-4 text-[#20170f]">
-          <strong className="text-[14px]">Religião</strong>
-          <ChevronDown size={18} className="text-[#cfa74a]" />
+      <div className="border-b border-[#f0e3c2] p-6">
+        <div className="mb-4 flex justify-between text-[#20170f]">
+          <strong className="text-[14px]">
+            Religião
+          </strong>
+
+          <ChevronDown
+            size={18}
+            className="text-[#cfa74a]"
+          />
         </div>
 
         <div className="space-y-3">
-          {religions.map((religion, index) => (
-            <label
-              key={religion}
-              className="flex items-center gap-3 text-[14px] text-neutral-800"
-            >
-              <input
-                type="checkbox"
-                className="w-3.5 h-3.5 accent-[#cfa74a]"
-              />
+          {religions.map(
+            (religion, index) => (
+              <label
+                key={religion}
+                className="flex items-center gap-3 text-[14px] text-neutral-800"
+              >
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 accent-[#cfa74a]"
+                />
 
-              <span className="w-5 text-center">
-                {
-                  [
-                    "✝️",
-                    "☪️",
-                    "✡️",
-                    "🕉️",
-                    "☸️",
-                    "🕯️",
-                    "⚱️",
-                    "🪶",
-                    "🧑🏾",
-                    "🎪",
-                    "⛪",
-                    "✟",
-                  ][index]
-                }
-              </span>
+                <span className="w-5 text-center">
+                  {
+                    [
+                      "✝️",
+                      "☪️",
+                      "✡️",
+                      "🕉️",
+                      "☸️",
+                      "🕯️",
+                      "⚱️",
+                      "🪶",
+                      "🧑🏾",
+                      "🎪",
+                      "⛪",
+                      "✟",
+                    ][index]
+                  }
+                </span>
 
-              {religion}
-            </label>
-          ))}
+                {religion}
+              </label>
+            )
+          )}
         </div>
       </div>
 
-      {["Categoria", "Cor"].map((item) => (
+      {[
+        "Categoria",
+        "Cor",
+      ].map((item) => (
         <div
           key={item}
-          className="h-[54px] px-6 border-b border-[#f0e3c2] flex items-center justify-between text-[#20170f]"
+          className="flex h-[54px] items-center justify-between border-b border-[#f0e3c2] px-6 text-[#20170f]"
         >
-          <strong className="text-[14px]">{item}</strong>
-          <ChevronDown size={18} className="text-[#cfa74a]" />
+          <strong className="text-[14px]">
+            {item}
+          </strong>
+
+          <ChevronDown
+            size={18}
+            className="text-[#cfa74a]"
+          />
         </div>
       ))}
 
       <div className="p-6">
-        <strong className="text-[14px] text-[#20170f]">Faixa de preço</strong>
+        <strong className="text-[14px] text-[#20170f]">
+          Faixa de preço
+        </strong>
 
-        <div className="mt-6 h-[4px] rounded bg-[#e3c97a] relative">
-          <span className="absolute -top-1 left-0 w-3 h-3 rounded-full bg-[#cfa74a]" />
-          <span className="absolute -top-1 right-0 w-3 h-3 rounded-full bg-[#cfa74a]" />
+        <div className="relative mt-6 h-[4px] rounded bg-[#e3c97a]">
+          <span className="absolute -top-1 left-0 h-3 w-3 rounded-full bg-[#cfa74a]" />
+
+          <span className="absolute -top-1 right-0 h-3 w-3 rounded-full bg-[#cfa74a]" />
         </div>
 
-        <div className="flex justify-between mt-5 text-[14px] text-[#6f5a28]">
+        <div className="mt-5 flex justify-between text-[14px] text-[#6f5a28]">
           <span>R$ 0,00</span>
+
           <span>R$ 500,00+</span>
         </div>
 
-        <button className="mt-6 w-full h-[43px] rounded-[4px] bg-gradient-to-r from-[#b8872b] via-[#d8b35a] to-[#cfa74a] text-white font-bold text-[14px] shadow-[0_4px_12px_rgba(207,167,74,0.25)]">
+        <button className="mt-6 h-[43px] w-full rounded-[4px] bg-gradient-to-r from-[#b8872b] via-[#d8b35a] to-[#cfa74a] text-[14px] font-bold text-white shadow-[0_4px_12px_rgba(207,167,74,0.25)]">
           FILTRAR
         </button>
       </div>
@@ -243,15 +492,25 @@ function FilterBox() {
   );
 }
 
-function InfoCard({ icon, title, text, link }: any) {
+
+/* =========================================================
+   CARD INFORMAÇÃO
+========================================================= */
+
+function InfoCard({
+  icon,
+  title,
+  text,
+  link,
+}: any) {
   return (
-    <div className="min-h-[118px] rounded-[8px] border border-[#f0e3c2] bg-[#fffdf7] px-6 py-5 flex items-center gap-5 overflow-hidden shadow-[0_2px_10px_rgba(207,167,74,0.08)]">
-      <div className="min-w-[68px] h-[68px] rounded-full bg-gradient-to-b from-[#f3de9b] to-[#cfa74a] text-white flex items-center justify-center">
+    <div className="flex min-h-[118px] items-center gap-5 overflow-hidden rounded-[8px] border border-[#f0e3c2] bg-[#fffdf7] px-6 py-5 shadow-[0_2px_10px_rgba(207,167,74,0.08)]">
+      <div className="flex h-[68px] min-w-[68px] items-center justify-center rounded-full bg-gradient-to-b from-[#f3de9b] to-[#cfa74a] text-white">
         {icon}
       </div>
 
       <div className="flex-1">
-        <h4 className="font-serif text-[18px] leading-[22px] font-bold text-[#20170f]">
+        <h4 className="font-serif text-[18px] font-bold leading-[22px] text-[#20170f]">
           {title}
         </h4>
 
@@ -267,43 +526,105 @@ function InfoCard({ icon, title, text, link }: any) {
   );
 }
 
+
+/* =========================================================
+   HOME
+========================================================= */
+
 export default function HomePage() {
   return (
     <main className="bg-white">
       <Header />
+
       <BannerCarousel />
-      <section className="max-w-[1370px] mx-auto px-6 pt-6">
-        <div className="flex items-center gap-2 text-[14px] text-neutral-600 mb-8">
+
+      <section
+        className="
+          mx-auto
+          max-w-[1370px]
+          px-3
+          pt-5
+
+          sm:px-6
+          sm:pt-6
+        "
+      >
+        {/* BREADCRUMB */}
+
+        <div className="mb-6 flex items-center gap-2 text-[12px] text-neutral-600 sm:mb-8 sm:text-[14px]">
           <Home size={16} />
+
           <span>›</span>
-          <span>Artigos Religiosos</span>
+
+          <span>
+            Artigos Religiosos
+          </span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_315px] gap-8">
-          <div>
-            <div className="text-center mb-10">
-              <h1 className="font-serif text-[33px] text-[#20170f]">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_315px]">
+          <div className="min-w-0">
+
+            {/* TÍTULO */}
+
+            <div className="mb-7 text-center sm:mb-10">
+              <h1 className="font-serif text-[27px] text-[#20170f] sm:text-[33px]">
                 Artigos Religiosos
               </h1>
 
-              <div className="w-[130px] h-[2px] bg-gradient-to-r from-[#f3de9b] to-[#cfa74a] mx-auto mt-2" />
+              <div className="mx-auto mt-2 h-[2px] w-[110px] bg-gradient-to-r from-[#f3de9b] to-[#cfa74a] sm:w-[130px]" />
 
-              <p className="mt-5 text-neutral-500">1789 itens encontrados</p>
+              <p className="mt-4 text-[13px] text-neutral-500 sm:mt-5 sm:text-base">
+                1789 itens encontrados
+              </p>
             </div>
 
-            <div className="w-[250px] h-[38px] bg-white border border-[#f0e3c2] rounded-[6px] flex items-center justify-between px-4 mb-4 text-[#6f5a28]">
-              <span className="text-sm">Ordenar por:</span>
-              <span className="text-sm">Mais populares</span>
-              <ChevronDown size={16} className="text-[#cfa74a]" />
+            {/* ORDENAÇÃO */}
+
+            <div className="mb-4 flex h-[38px] w-full max-w-[250px] items-center justify-between rounded-[6px] border border-[#f0e3c2] bg-white px-3 text-[#6f5a28] sm:px-4">
+              <span className="text-[12px] sm:text-sm">
+                Ordenar por:
+              </span>
+
+              <span className="text-[12px] sm:text-sm">
+                Mais populares
+              </span>
+
+              <ChevronDown
+                size={16}
+                className="text-[#cfa74a]"
+              />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-              {products.map((product) => (
-                <ProductCard key={product.slug} product={product} />
-              ))}
+            {/* =============================================
+                PRODUTOS
+
+                CELULAR = 2 COLUNAS
+            ============================================= */}
+
+            <div
+              className="
+                grid
+                grid-cols-2
+                gap-2
+
+                sm:gap-4
+
+                xl:grid-cols-4
+              "
+            >
+              {products.map(
+                (product) => (
+                  <ProductCard
+                    key={product.slug}
+                    product={product}
+                  />
+                )
+              )}
             </div>
 
-            <div className="flex justify-center gap-3 mt-8">
+            {/* PAGINAÇÃO */}
+
+            <div className="mt-7 flex justify-center gap-1.5 sm:mt-8 sm:gap-3">
               {[
                 <ChevronLeft size={16} />,
                 "1",
@@ -312,43 +633,59 @@ export default function HomePage() {
                 "...",
                 "45",
                 <ChevronRight size={16} />,
-              ].map((p, i) => (
-                <button
-                  key={i}
-                  className={`w-9 h-9 rounded border border-[#f0e3c2] flex items-center justify-center text-sm ${
-                    p === "1"
-                      ? "bg-gradient-to-b from-[#f3de9b] to-[#cfa74a] text-white"
-                      : "bg-white text-[#6f5a28]"
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
+              ].map(
+                (p, i) => (
+                  <button
+                    key={i}
+                    className={`flex h-8 w-8 items-center justify-center rounded border border-[#f0e3c2] text-[12px] sm:h-9 sm:w-9 sm:text-sm ${
+                      p === "1"
+                        ? "bg-gradient-to-b from-[#f3de9b] to-[#cfa74a] text-white"
+                        : "bg-white text-[#6f5a28]"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8 mb-8">
+            {/* INFORMAÇÕES */}
+
+            <div className="mb-8 mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
               <InfoCard
-                icon={<Truck size={34} />}
+                icon={
+                  <Truck size={34} />
+                }
                 title="Entrega para todo o Brasil"
                 text="Enviamos para todas as regiões com segurança e agilidade."
                 link="Saiba mais"
               />
 
               <InfoCard
-                icon={<WalletCards size={34} />}
+                icon={
+                  <WalletCards
+                    size={34}
+                  />
+                }
                 title="Pagamento seguro"
                 text="Aceitamos Pix, cartão de crédito, débito e boleto."
                 link="Formas de pagamento"
               />
 
               <InfoCard
-                icon={<ShieldCheck size={34} />}
+                icon={
+                  <ShieldCheck
+                    size={34}
+                  />
+                }
                 title="Respeito e diversidade"
                 text="Valorizamos todas as religiões, culturas e tradições."
                 link="Nossa missão"
               />
             </div>
           </div>
+
+          {/* FILTRO DESKTOP */}
 
           <div className="hidden lg:block">
             <FilterBox />
@@ -358,8 +695,13 @@ export default function HomePage() {
 
       <Footer />
 
-      <button className="fixed bottom-8 right-8 w-[62px] h-[62px] rounded-full bg-[#24c45a] text-white flex items-center justify-center shadow-2xl">
-        <MessageCircle size={34} />
+      {/* WHATSAPP */}
+
+      <button className="fixed bottom-6 right-5 flex h-[56px] w-[56px] items-center justify-center rounded-full bg-[#24c45a] text-white shadow-2xl sm:bottom-8 sm:right-8 sm:h-[62px] sm:w-[62px]">
+        <MessageCircle
+          size={30}
+          className="sm:h-[34px] sm:w-[34px]"
+        />
       </button>
     </main>
   );
