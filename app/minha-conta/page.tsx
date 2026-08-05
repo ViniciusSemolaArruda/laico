@@ -265,7 +265,7 @@ export default async function MinhaContaPage() {
     });
 
   return (
-    <main className="min-h-screen bg-[#f4efe6]">
+    <main className="min-h-screen bg-white">
       <Header />
 
       {/*
