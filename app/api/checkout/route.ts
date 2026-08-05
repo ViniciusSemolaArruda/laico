@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 
 import {
+  consumeRateLimit,
+  getClientIp,
+} from "@/lib/auth-rate-limit";
+
+import {
+  getCustomerSession,
+} from "@/lib/customer-auth";
+
+import {
   createOrderAccessToken,
   getOrderAccessCookieOptions,
 } from "@/lib/order-access";
@@ -88,6 +97,17 @@ type CheckoutProduct = {
   quantity: number;
 };
 
+class CheckoutIdentityConflictError extends Error {
+  constructor() {
+    super(
+      "CHECKOUT_IDENTITY_CONFLICT"
+    );
+
+    this.name =
+      "CheckoutIdentityConflictError";
+  }
+}
+
 function normalizeText(
   value: unknown,
   maximumLength = 255
@@ -105,7 +125,10 @@ function normalizeText(
     )
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, maximumLength);
+    .slice(
+      0,
+      maximumLength
+    );
 }
 
 function normalizeDigits(
@@ -117,7 +140,10 @@ function normalizeDigits(
     maximumLength + 20
   )
     .replace(/\D/g, "")
-    .slice(0, maximumLength);
+    .slice(
+      0,
+      maximumLength
+    );
 }
 
 function isValidEmail(
@@ -131,7 +157,9 @@ function isValidEmail(
 function isValidCpf(
   cpf: string
 ): boolean {
-  if (!/^\d{11}$/.test(cpf)) {
+  if (
+    !/^\d{11}$/.test(cpf)
+  ) {
     return false;
   }
 
@@ -142,7 +170,9 @@ function isValidCpf(
   }
 
   const digits =
-    cpf.split("").map(Number);
+    cpf
+      .split("")
+      .map(Number);
 
   let firstSum = 0;
 
@@ -157,14 +187,18 @@ function isValidCpf(
   }
 
   let firstDigit =
-    (firstSum * 10) % 11;
+    (firstSum * 10) %
+    11;
 
-  if (firstDigit === 10) {
+  if (
+    firstDigit === 10
+  ) {
     firstDigit = 0;
   }
 
   if (
-    firstDigit !== digits[9]
+    firstDigit !==
+    digits[9]
   ) {
     return false;
   }
@@ -182,14 +216,57 @@ function isValidCpf(
   }
 
   let secondDigit =
-    (secondSum * 10) % 11;
+    (secondSum * 10) %
+    11;
 
-  if (secondDigit === 10) {
+  if (
+    secondDigit === 10
+  ) {
     secondDigit = 0;
   }
 
   return (
-    secondDigit === digits[10]
+    secondDigit ===
+    digits[10]
+  );
+}
+
+function isSameOrigin(
+  request: Request
+) {
+  const origin =
+    request.headers.get(
+      "origin"
+    );
+
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    return (
+      new URL(origin)
+        .origin ===
+      new URL(request.url)
+        .origin
+    );
+  } catch {
+    return false;
+  }
+}
+
+function hasJsonContentType(
+  request: Request
+) {
+  return (
+    request.headers
+      .get(
+        "content-type"
+      )
+      ?.toLowerCase()
+      .includes(
+        "application/json"
+      ) === true
   );
 }
 
@@ -199,16 +276,41 @@ function errorResponse(
 ) {
   return NextResponse.json(
     {
-      error: message,
+      error:
+        message,
     },
     {
       status,
 
       headers: {
         "Cache-Control":
-          "no-store",
+          "private, no-store, no-cache, must-revalidate",
+
+        Pragma:
+          "no-cache",
+
+        "X-Content-Type-Options":
+          "nosniff",
       },
     }
+  );
+}
+
+function isPrismaUniqueError(
+  error: unknown
+) {
+  if (
+    typeof error !==
+      "object" ||
+    error === null ||
+    !("code" in error)
+  ) {
+    return false;
+  }
+
+  return (
+    error.code ===
+    "P2002"
   );
 }
 
@@ -216,6 +318,34 @@ export async function POST(
   request: Request
 ) {
   try {
+    /*
+     * =====================================================
+     * PROTEÇÕES DA REQUISIÇÃO
+     * =====================================================
+     */
+
+    if (
+      !isSameOrigin(
+        request
+      )
+    ) {
+      return errorResponse(
+        "Você não tem permissão para fazer isso! Acesso negado.",
+        403
+      );
+    }
+
+    if (
+      !hasJsonContentType(
+        request
+      )
+    ) {
+      return errorResponse(
+        "Formato da requisição inválido.",
+        415
+      );
+    }
+
     const contentLength =
       Number(
         request.headers.get(
@@ -235,6 +365,45 @@ export async function POST(
         413
       );
     }
+
+    /*
+     * Limite por origem da requisição.
+     *
+     * Evita criação massiva de pedidos
+     * automatizados.
+     */
+    const clientIp =
+      getClientIp(request);
+
+    const ipLimit =
+      await consumeRateLimit({
+        scope:
+          "checkout-ip",
+
+        identifier:
+          clientIp,
+
+        limit: 30,
+
+        windowMs:
+          15 * 60 * 1000,
+
+        blockMs:
+          30 * 60 * 1000,
+      });
+
+    if (!ipLimit.allowed) {
+      return errorResponse(
+        "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+        429
+      );
+    }
+
+    /*
+     * =====================================================
+     * BODY
+     * =====================================================
+     */
 
     let body: CheckoutBody;
 
@@ -256,6 +425,12 @@ export async function POST(
 
     const items =
       body.items;
+
+    /*
+     * =====================================================
+     * CLIENTE
+     * =====================================================
+     */
 
     const customerName =
       normalizeText(
@@ -282,7 +457,8 @@ export async function POST(
       );
 
     if (
-      customerName.length < 3 ||
+      customerName.length <
+        3 ||
       !isValidEmail(
         customerEmail
       )
@@ -294,8 +470,10 @@ export async function POST(
     }
 
     if (
-      customerPhone.length < 10 ||
-      customerPhone.length > 11
+      customerPhone.length <
+        10 ||
+      customerPhone.length >
+        11
     ) {
       return errorResponse(
         "Informe um telefone válido.",
@@ -304,7 +482,9 @@ export async function POST(
     }
 
     if (
-      !isValidCpf(customerCpf)
+      !isValidCpf(
+        customerCpf
+      )
     ) {
       return errorResponse(
         "Informe um CPF válido.",
@@ -312,8 +492,206 @@ export async function POST(
       );
     }
 
+    /*
+     * =====================================================
+     * IDENTIDADE DO CHECKOUT
+     * =====================================================
+     *
+     * Existem dois fluxos:
+     *
+     * 1. CLIENTE LOGADO
+     *    O userId vem da sessão.
+     *
+     * 2. VISITANTE
+     *    Somente uma identidade GUEST pode
+     *    ser localizada pelo e-mail informado.
+     *
+     * Uma conta ACTIVE/PENDING/DISABLED/ADMIN
+     * jamais é assumida apenas porque alguém
+     * digitou seu e-mail.
+     */
+
+    const customerSession =
+      await getCustomerSession();
+
+    let authenticatedUserId:
+      | string
+      | null =
+      null;
+
+    let existingGuestUserId:
+      | string
+      | null =
+      null;
+
+    let effectiveCustomerEmail =
+      customerEmail;
+
+    let isGuestCheckout =
+      true;
+
+    if (customerSession) {
+      /*
+       * Mesmo com sessão válida, confirmamos
+       * novamente o estado da conta.
+       */
+      const authenticatedUser =
+        await prisma.user.findFirst({
+          where: {
+            id:
+              customerSession.userId,
+
+            role:
+              "USER",
+
+            accountStatus:
+              "ACTIVE",
+
+            emailVerifiedAt: {
+              not: null,
+            },
+
+            disabledAt:
+              null,
+          },
+
+          select: {
+            id: true,
+            email: true,
+          },
+        });
+
+      if (
+        !authenticatedUser
+      ) {
+        return errorResponse(
+          "Você não tem permissão para fazer isso! Acesso negado.",
+          401
+        );
+      }
+
+      /*
+       * O e-mail digitado no formulário NÃO
+       * escolhe o proprietário do pedido.
+       *
+       * Para usuário autenticado usamos
+       * exclusivamente a conta da sessão.
+       */
+      authenticatedUserId =
+        authenticatedUser.id;
+
+      effectiveCustomerEmail =
+        authenticatedUser.email
+          .trim()
+          .toLowerCase();
+
+      isGuestCheckout =
+        false;
+    } else {
+      /*
+       * Visitante:
+       *
+       * procuramos o e-mail apenas para saber
+       * se ele corresponde a uma identidade
+       * GUEST legítima.
+       */
+      const existingUser =
+        await prisma.user.findUnique({
+          where: {
+            email:
+              customerEmail,
+          },
+
+          select: {
+            id: true,
+            role: true,
+            accountStatus:
+              true,
+            emailVerifiedAt:
+              true,
+            disabledAt:
+              true,
+          },
+        });
+
+      if (existingUser) {
+        const canUseAsGuest =
+          existingUser.role ===
+            "USER" &&
+          existingUser.accountStatus ===
+            "GUEST" &&
+          existingUser.emailVerifiedAt ===
+            null &&
+          existingUser.disabledAt ===
+            null;
+
+        if (
+          !canUseAsGuest
+        ) {
+          /*
+           * Resposta propositalmente genérica.
+           *
+           * Não informamos:
+           *
+           * - se o e-mail existe;
+           * - se está verificado;
+           * - se é admin;
+           * - se está desativado;
+           * - o nome da conta.
+           */
+          return errorResponse(
+            "Não foi possível concluir o checkout com os dados informados.",
+            400
+          );
+        }
+
+        existingGuestUserId =
+          existingUser.id;
+      }
+    }
+
+    /*
+     * Rate limit da identidade informada.
+     *
+     * Para conta autenticada usamos o e-mail
+     * verdadeiro obtido no servidor.
+     */
+    const identityLimit =
+      await consumeRateLimit({
+        scope:
+          "checkout-identity",
+
+        identifier:
+          effectiveCustomerEmail,
+
+        limit: 12,
+
+        windowMs:
+          30 * 60 * 1000,
+
+        blockMs:
+          30 * 60 * 1000,
+      });
+
     if (
-      !Array.isArray(items) ||
+      !identityLimit.allowed
+    ) {
+      return errorResponse(
+        "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+        429
+      );
+    }
+
+    /*
+     * =====================================================
+     * ITENS
+     * =====================================================
+     */
+
+    if (
+      !Array.isArray(
+        items
+      ) ||
       items.length === 0
     ) {
       return errorResponse(
@@ -322,7 +700,9 @@ export async function POST(
       );
     }
 
-    if (items.length > 50) {
+    if (
+      items.length > 50
+    ) {
       return errorResponse(
         "Quantidade máxima de itens excedida.",
         400
@@ -330,21 +710,26 @@ export async function POST(
     }
 
     const normalizedItems =
-      items.map((item) => ({
-        id: normalizeText(
-          item.id,
-          100
-        ),
+      items.map(
+        (item) => ({
+          id:
+            normalizeText(
+              item.id,
+              100
+            ),
 
-        slug: normalizeText(
-          item.slug,
-          180
-        ),
+          slug:
+            normalizeText(
+              item.slug,
+              180
+            ),
 
-        quantity: Number(
-          item.quantity
-        ),
-      }));
+          quantity:
+            Number(
+              item.quantity
+            ),
+        })
+      );
 
     const invalidItem =
       normalizedItems.find(
@@ -353,16 +738,26 @@ export async function POST(
           !Number.isInteger(
             item.quantity
           ) ||
-          item.quantity < 1 ||
-          item.quantity > 100
+          item.quantity <
+            1 ||
+          item.quantity >
+            100
       );
 
-    if (invalidItem) {
+    if (
+      invalidItem
+    ) {
       return errorResponse(
         "Existe um item inválido no carrinho.",
         400
       );
     }
+
+    /*
+     * =====================================================
+     * ENDEREÇO
+     * =====================================================
+     */
 
     const cep =
       normalizeDigits(
@@ -408,9 +803,12 @@ export async function POST(
 
     if (
       cep.length !== 8 ||
-      !VALID_STATES.has(state) ||
+      !VALID_STATES.has(
+        state
+      ) ||
       city.length < 2 ||
-      neighborhood.length < 2 ||
+      neighborhood.length <
+        2 ||
       street.length < 2 ||
       !addressNumber
     ) {
@@ -421,10 +819,17 @@ export async function POST(
     }
 
     /*
-     * O navegador não controla os preços.
-     * Produtos, preços e estoque são
-     * consultados novamente no servidor.
+     * =====================================================
+     * PRODUTOS
+     * =====================================================
+     *
+     * IDs, preços e estoque são novamente
+     * consultados no banco.
+     *
+     * Nenhum preço enviado pelo navegador
+     * é utilizado.
      */
+
     const productsById =
       new Map<
         string,
@@ -440,8 +845,11 @@ export async function POST(
         | null =
         await prisma.product.findFirst({
           where: {
-            id: item.id,
-            active: true,
+            id:
+              item.id,
+
+            active:
+              true,
           },
 
           select: {
@@ -463,7 +871,8 @@ export async function POST(
               slug:
                 item.slug,
 
-              active: true,
+              active:
+                true,
             },
 
             select: {
@@ -484,7 +893,9 @@ export async function POST(
       }
 
       const productPrice =
-        Number(product.price);
+        Number(
+          product.price
+        );
 
       if (
         !Number.isFinite(
@@ -493,7 +904,7 @@ export async function POST(
         productPrice <= 0
       ) {
         return errorResponse(
-          `O produto ${product.name} possui um preço inválido.`,
+          "Existe um produto com preço inválido.",
           400
         );
       }
@@ -505,7 +916,8 @@ export async function POST(
 
       const totalQuantity =
         (existingProduct
-          ?.quantity || 0) +
+          ?.quantity ??
+          0) +
         item.quantity;
 
       if (
@@ -521,11 +933,21 @@ export async function POST(
       productsById.set(
         product.id,
         {
-          id: product.id,
-          name: product.name,
-          image: product.image,
-          price: productPrice,
-          stock: product.stock,
+          id:
+            product.id,
+
+          name:
+            product.name,
+
+          image:
+            product.image,
+
+          price:
+            productPrice,
+
+          stock:
+            product.stock,
+
           quantity:
             totalQuantity,
         }
@@ -555,10 +977,10 @@ export async function POST(
 
     /*
      * Frete e desconto não são aceitos
-     * diretamente do navegador.
+     * do navegador.
      *
-     * Serão calculados no servidor quando
-     * fizermos Correios e cupons.
+     * Correios e cupons serão incorporados
+     * posteriormente no servidor.
      */
     const shipping = 0;
     const discount = 0;
@@ -573,7 +995,9 @@ export async function POST(
       );
 
     if (
-      !Number.isFinite(total) ||
+      !Number.isFinite(
+        total
+      ) ||
       total <= 0
     ) {
       return errorResponse(
@@ -582,47 +1006,194 @@ export async function POST(
       );
     }
 
+    /*
+     * =====================================================
+     * TRANSAÇÃO
+     * =====================================================
+     */
+
     const order =
       await prisma.$transaction(
-        async (transaction) => {
-          const user =
-            await transaction.user.upsert({
-              where: {
-                email:
-                  customerEmail,
-              },
+        async (
+          transaction
+        ) => {
+          let orderUserId:
+            string;
 
-              update: {
-                name:
-                  customerName,
+          /*
+           * ===============================================
+           * CLIENTE LOGADO
+           * ===============================================
+           */
 
-                phone:
-                  customerPhone,
+          if (
+            authenticatedUserId
+          ) {
+            /*
+             * O checkout pode atualizar telefone e CPF
+             * da PRÓPRIA conta autenticada.
+             *
+             * Nunca altera nome/e-mail por dados recebidos
+             * do formulário.
+             */
+            const updateResult =
+              await transaction.user.updateMany({
+                where: {
+                  id:
+                    authenticatedUserId,
 
-                cpf:
-                  customerCpf,
-              },
+                  role:
+                    "USER",
 
-              create: {
-                name:
-                  customerName,
+                  accountStatus:
+                    "ACTIVE",
 
-                email:
-                  customerEmail,
+                  emailVerifiedAt: {
+                    not:
+                      null,
+                  },
 
-                phone:
-                  customerPhone,
+                  disabledAt:
+                    null,
+                },
 
-                cpf:
-                  customerCpf,
-              },
-            });
+                data: {
+                  phone:
+                    customerPhone,
+
+                  cpf:
+                    customerCpf,
+                },
+              });
+
+            if (
+              updateResult.count !==
+              1
+            ) {
+              throw new CheckoutIdentityConflictError();
+            }
+
+            orderUserId =
+              authenticatedUserId;
+          }
+
+          /*
+           * ===============================================
+           * GUEST EXISTENTE
+           * ===============================================
+           */
+
+          else if (
+            existingGuestUserId
+          ) {
+            /*
+             * Revalidamos dentro da escrita.
+             *
+             * Se a conta tiver mudado de GUEST para
+             * ACTIVE/PENDING enquanto o checkout estava
+             * sendo processado, o update não encontrará
+             * mais a identidade.
+             */
+            const updateResult =
+              await transaction.user.updateMany({
+                where: {
+                  id:
+                    existingGuestUserId,
+
+                  role:
+                    "USER",
+
+                  accountStatus:
+                    "GUEST",
+
+                  emailVerifiedAt:
+                    null,
+
+                  disabledAt:
+                    null,
+                },
+
+                data: {
+                  name:
+                    customerName,
+
+                  phone:
+                    customerPhone,
+
+                  cpf:
+                    customerCpf,
+                },
+              });
+
+            if (
+              updateResult.count !==
+              1
+            ) {
+              throw new CheckoutIdentityConflictError();
+            }
+
+            orderUserId =
+              existingGuestUserId;
+          }
+
+          /*
+           * ===============================================
+           * NOVO GUEST
+           * ===============================================
+           */
+
+          else {
+            const guestUser =
+              await transaction.user.create({
+                data: {
+                  name:
+                    customerName,
+
+                  email:
+                    customerEmail,
+
+                  phone:
+                    customerPhone,
+
+                  cpf:
+                    customerCpf,
+
+                  role:
+                    "USER",
+
+                  accountStatus:
+                    "GUEST",
+                },
+
+                select: {
+                  id: true,
+                },
+              });
+
+            orderUserId =
+              guestUser.id;
+          }
+
+          /*
+           * ===============================================
+           * SNAPSHOT DO ENDEREÇO
+           * ===============================================
+           *
+           * Este endereço pertence ao pedido.
+           *
+           * Ele já nasce arquivado para não aparecer
+           * como um endereço salvo/editável na conta.
+           *
+           * Assim uma alteração futura em "Meus
+           * endereços" nunca altera o endereço de
+           * um pedido antigo.
+           */
 
           const savedAddress =
             await transaction.address.create({
               data: {
                 userId:
-                  user.id,
+                  orderUserId,
 
                 name:
                   "Endereço de entrega",
@@ -637,14 +1208,31 @@ export async function POST(
                   addressNumber,
 
                 complement:
-                  complement || null,
+                  complement ||
+                  null,
+
+                isDefault:
+                  false,
+
+                archivedAt:
+                  new Date(),
+              },
+
+              select: {
+                id: true,
               },
             });
+
+          /*
+           * ===============================================
+           * PEDIDO
+           * ===============================================
+           */
 
           return transaction.order.create({
             data: {
               userId:
-                user.id,
+                orderUserId,
 
               addressId:
                 savedAddress.id,
@@ -657,7 +1245,9 @@ export async function POST(
               items: {
                 create:
                   products.map(
-                    (product) => ({
+                    (
+                      product
+                    ) => ({
                       productId:
                         product.id,
 
@@ -694,23 +1284,21 @@ export async function POST(
       );
 
     /*
-     * Gera o token secreto, salva somente
-     * seu hash no banco e devolve o token
-     * verdadeiro para ser colocado no cookie.
+     * =====================================================
+     * RESPOSTA
+     * =====================================================
      */
-    const accessToken =
-      await createOrderAccessToken({
-        orderId: order.id,
-        userId: order.userId,
-      });
 
     const response =
       NextResponse.json(
         {
-          orderId: order.id,
+          orderId:
+            order.id,
 
           order: {
-            id: order.id,
+            id:
+              order.id,
+
             status:
               order.status,
 
@@ -745,39 +1333,121 @@ export async function POST(
 
           headers: {
             "Cache-Control":
-              "no-store",
+              "private, no-store, no-cache, must-revalidate",
+
+            Pragma:
+              "no-cache",
+
+            "X-Content-Type-Options":
+              "nosniff",
           },
         }
       );
 
     /*
-     * O token não é devolvido no JSON e não
-     * pode ser acessado pelo JavaScript.
+     * =====================================================
+     * TOKEN DO VISITANTE
+     * =====================================================
+     *
+     * SOMENTE checkout visitante recebe um
+     * OrderAccessToken.
+     *
+     * Usuário logado já possui sua CustomerSession
+     * e não deve ganhar uma segunda credencial capaz
+     * de acessar o pedido depois do logout.
      */
-    response.cookies.set({
-      ...getOrderAccessCookieOptions(
-        order.id
-      ),
 
-      value: accessToken,
-    });
+    if (
+      isGuestCheckout
+    ) {
+      const accessToken =
+        await createOrderAccessToken({
+          orderId:
+            order.id,
+
+          userId:
+            order.userId,
+        });
+
+      /*
+       * O token bruto:
+       *
+       * - não vai para o JSON;
+       * - não vai para logs;
+       * - fica em cookie HttpOnly;
+       * - seu hash fica no banco.
+       */
+      response.cookies.set({
+        ...getOrderAccessCookieOptions(
+          order.id
+        ),
+
+        value:
+          accessToken,
+      });
+    }
 
     return response;
   } catch (error) {
+    /*
+     * Identidade alterada durante o checkout.
+     *
+     * Não revelamos o motivo exato.
+     */
     if (
-  process.env.NODE_ENV ===
-  "development"
-) {
-  console.error(
-  "Erro interno no checkout:",
-  {
-    errorType:
-      error instanceof Error
-        ? error.name
-        : "UnknownError",
-  }
-);
-}
+      error instanceof
+      CheckoutIdentityConflictError
+    ) {
+      return errorResponse(
+        "Não foi possível concluir o checkout com os dados informados.",
+        409
+      );
+    }
+
+    /*
+     * Pode ocorrer se duas requisições tentarem
+     * criar simultaneamente a mesma identidade
+     * GUEST.
+     *
+     * Também não revelamos detalhes do e-mail.
+     */
+    if (
+      isPrismaUniqueError(
+        error
+      )
+    ) {
+      return errorResponse(
+        "Não foi possível concluir o checkout. Tente novamente.",
+        409
+      );
+    }
+
+    /*
+     * Nunca registramos:
+     *
+     * - nome;
+     * - e-mail;
+     * - CPF;
+     * - telefone;
+     * - endereço;
+     * - cookies;
+     * - tokens;
+     * - corpo da requisição.
+     */
+    if (
+      process.env.NODE_ENV ===
+      "development"
+    ) {
+      console.error(
+        "Erro interno no checkout:",
+        {
+          errorType:
+            error instanceof Error
+              ? error.name
+              : "UnknownError",
+        }
+      );
+    }
 
     return errorResponse(
       "Erro interno ao criar pedido.",

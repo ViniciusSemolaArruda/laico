@@ -5,22 +5,25 @@ import {
   consumeRateLimit,
   getClientIp,
 } from "@/lib/auth-rate-limit";
-import { createCustomerSession } from "@/lib/customer-auth";
+
+import {
+  createCustomerSession,
+} from "@/lib/customer-auth";
+
 import { prisma } from "@/lib/prisma";
 
-export const dynamic = "force-dynamic";
+export const dynamic =
+  "force-dynamic";
 
 const MAX_BODY_SIZE = 8192;
 const MAX_PASSWORD_BYTES = 256;
 
 /*
- * Usado para reduzir diferenças de tempo entre:
+ * Hash utilizado para evitar diferenças
+ * perceptíveis de tempo entre:
  *
- * - e-mail inexistente;
+ * - usuário inexistente;
  * - senha incorreta.
- *
- * Assim continuamos executando bcrypt mesmo quando
- * o usuário não existe.
  */
 const dummyPasswordHashPromise =
   bcrypt.hash(
@@ -45,7 +48,8 @@ function jsonResponse(
       "Cache-Control":
         "no-store, no-cache, must-revalidate",
 
-      Pragma: "no-cache",
+      Pragma:
+        "no-cache",
 
       "X-Content-Type-Options":
         "nosniff",
@@ -58,7 +62,9 @@ function jsonResponse(
 function normalizeEmail(
   value: unknown
 ) {
-  if (typeof value !== "string") {
+  if (
+    typeof value !== "string"
+  ) {
     return "";
   }
 
@@ -71,7 +77,9 @@ function normalizeEmail(
 function getPassword(
   value: unknown
 ) {
-  if (typeof value !== "string") {
+  if (
+    typeof value !== "string"
+  ) {
     return "";
   }
 
@@ -98,15 +106,23 @@ function isSameOrigin(
       "origin"
     );
 
+  /*
+   * Algumas chamadas legítimas do servidor
+   * podem não possuir Origin.
+   */
   if (!origin) {
     return true;
   }
 
   try {
+    const requestOrigin =
+      new URL(
+        request.url
+      ).origin;
+
     return (
       origin ===
-      new URL(request.url)
-        .origin
+      requestOrigin
     );
   } catch {
     return false;
@@ -115,12 +131,13 @@ function isSameOrigin(
 
 function invalidCredentialsResponse() {
   /*
-   * Não revelamos:
+   * Resposta genérica.
    *
-   * - se o e-mail existe;
-   * - se ainda não foi confirmado;
-   * - se a conta está desativada;
-   * - se a senha está errada.
+   * Não informa se:
+   *
+   * - o e-mail existe;
+   * - a senha está errada;
+   * - a conta foi desativada.
    */
   return jsonResponse(
     {
@@ -128,6 +145,30 @@ function invalidCredentialsResponse() {
         "E-mail ou senha inválidos.",
     },
     401
+  );
+}
+
+function emailNotVerifiedResponse() {
+  /*
+   * Esta resposta SOMENTE poderá ser enviada
+   * depois de a senha ter sido validada.
+   *
+   * Portanto, apenas saber o e-mail da pessoa
+   * não é suficiente para descobrir o estado
+   * da conta.
+   */
+  return jsonResponse(
+    {
+      error:
+        "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada e também a pasta de spam.",
+
+      code:
+        "EMAIL_NOT_VERIFIED",
+
+      requiresEmailVerification:
+        true,
+    },
+    403
   );
 }
 
@@ -141,7 +182,11 @@ export async function POST(
      * =====================================================
      */
 
-    if (!isSameOrigin(request)) {
+    if (
+      !isSameOrigin(
+        request
+      )
+    ) {
       return jsonResponse(
         {
           error:
@@ -180,7 +225,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * BODY
+     * TAMANHO DA REQUISIÇÃO
      * =====================================================
      */
 
@@ -206,6 +251,12 @@ export async function POST(
         413
       );
     }
+
+    /*
+     * =====================================================
+     * BODY
+     * =====================================================
+     */
 
     const rawBody =
       await request.text();
@@ -240,7 +291,9 @@ export async function POST(
       );
 
     if (
-      !isValidEmail(email) ||
+      !isValidEmail(
+        email
+      ) ||
       !password ||
       Buffer.byteLength(
         password,
@@ -283,7 +336,9 @@ export async function POST(
           1000,
       });
 
-    if (!ipRateLimit.allowed) {
+    if (
+      !ipRateLimit.allowed
+    ) {
       return jsonResponse(
         {
           error:
@@ -348,7 +403,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * USUÁRIO
+     * BUSCA DO USUÁRIO
      * =====================================================
      */
 
@@ -360,8 +415,12 @@ export async function POST(
 
         select: {
           id: true,
-          password: true,
-          role: true,
+
+          password:
+            true,
+
+          role:
+            true,
 
           accountStatus:
             true,
@@ -375,8 +434,11 @@ export async function POST(
       });
 
     /*
-     * Mesmo que não exista usuário, executamos
-     * bcrypt.compare usando um hash dummy.
+     * Se o usuário não existir, ainda executamos
+     * bcrypt.compare() utilizando o hash dummy.
+     *
+     * Isso dificulta inferir a existência da conta
+     * comparando tempos de resposta.
      */
 
     const passwordHash =
@@ -391,45 +453,98 @@ export async function POST(
 
     /*
      * =====================================================
-     * AUTORIZAÇÃO DA CONTA
+     * CREDENCIAIS INVÁLIDAS
      * =====================================================
+     *
+     * Antes de revelar qualquer informação sobre
+     * confirmação de e-mail, a senha precisa estar
+     * correta.
      */
 
-    const canLogin =
-      Boolean(user) &&
-      passwordIsValid &&
-      user?.role ===
-        "USER" &&
-      user.accountStatus ===
-        "ACTIVE" &&
-      Boolean(
-        user.emailVerifiedAt
-      ) &&
-      !user.disabledAt &&
-      Boolean(
-        user.password
-      );
-
     if (
-      !canLogin ||
-      !user
+      !user ||
+      !passwordIsValid ||
+      !user.password ||
+      user.role !==
+        "USER"
     ) {
       return invalidCredentialsResponse();
     }
 
     /*
      * =====================================================
-     * SESSÃO
+     * CONTA DESATIVADA
+     * =====================================================
+     *
+     * Mantemos resposta genérica para uma conta
+     * desativada.
+     */
+
+    if (
+      user.disabledAt ||
+      user.accountStatus ===
+        "DISABLED"
+    ) {
+      return invalidCredentialsResponse();
+    }
+
+    /*
+     * =====================================================
+     * E-MAIL AINDA NÃO CONFIRMADO
+     * =====================================================
+     *
+     * IMPORTANTE:
+     *
+     * Só chegamos aqui depois de verificar a senha.
+     *
+     * Dessa forma:
+     *
+     * atacante + e-mail conhecido + senha errada
+     *
+     * continua recebendo:
+     *
+     * "E-mail ou senha inválidos."
+     */
+
+    if (
+      !user.emailVerifiedAt &&
+      (
+        user.accountStatus ===
+          "PENDING_VERIFICATION" ||
+        user.accountStatus ===
+          "GUEST"
+      )
+    ) {
+      return emailNotVerifiedResponse();
+    }
+
+    /*
+     * =====================================================
+     * CONTA PRECISA ESTAR ATIVA
+     * =====================================================
+     */
+
+    if (
+      user.accountStatus !==
+        "ACTIVE" ||
+      !user.emailVerifiedAt
+    ) {
+      return invalidCredentialsResponse();
+    }
+
+    /*
+     * =====================================================
+     * CRIAÇÃO DA SESSÃO
      * =====================================================
      *
      * createCustomerSession:
      *
-     * - gera token aleatório;
-     * - salva somente hash no banco;
-     * - cria cookie HttpOnly;
+     * - gera token criptograficamente aleatório;
+     * - armazena somente o hash no banco;
+     * - envia token pelo cookie HttpOnly;
      * - Secure em produção;
      * - possui expiração;
-     * - pode ser revogada.
+     * - pode ser revogado.
      */
 
     await createCustomerSession(
@@ -437,12 +552,15 @@ export async function POST(
     );
 
     /*
-     * lastLoginAt é apenas informação operacional.
+     * =====================================================
+     * ÚLTIMO LOGIN
+     * =====================================================
      */
 
     await prisma.user.update({
       where: {
-        id: user.id,
+        id:
+          user.id,
       },
 
       data: {
@@ -455,20 +573,28 @@ export async function POST(
       },
     });
 
+    /*
+     * =====================================================
+     * SUCESSO
+     * =====================================================
+     */
+
     return jsonResponse({
-      success: true,
+      success:
+        true,
 
       redirectTo:
         "/minha-conta",
     });
   } catch (error) {
     /*
-     * Nunca logamos:
+     * Nunca registramos:
      *
      * - e-mail;
      * - senha;
      * - cookie;
-     * - token.
+     * - token;
+     * - corpo da requisição.
      */
 
     console.error(

@@ -174,7 +174,7 @@ model CartItem {
 }
 
 model Address {
-  id           String  @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
   name         String
   cep          String
@@ -184,7 +184,8 @@ model Address {
   street       String
   number       String
   complement   String?
-  isDefault    Boolean @default(false)
+  isDefault    Boolean   @default(false)
+  archivedAt   DateTime?
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders Order[]
@@ -193,6 +194,8 @@ model Address {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([userId, archivedAt])
+  @@index([userId, isDefault])
 }
 
 model Order {

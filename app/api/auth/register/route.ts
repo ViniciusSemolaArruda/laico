@@ -6,14 +6,24 @@ import {
   consumeRateLimit,
   getClientIp,
 } from "@/lib/auth-rate-limit";
-import { createEmailVerificationToken } from "@/lib/customer-tokens";
+
+import {
+  createEmailVerificationToken,
+} from "@/lib/customer-tokens";
+
 import { prisma } from "@/lib/prisma";
 
-export const dynamic = "force-dynamic";
+export const dynamic =
+  "force-dynamic";
 
-const MAX_BODY_SIZE = 16_384;
-const MIN_PASSWORD_LENGTH = 12;
-const MAX_PASSWORD_BYTES = 72;
+const MAX_BODY_SIZE =
+  16_384;
+
+const MIN_PASSWORD_LENGTH =
+  12;
+
+const MAX_PASSWORD_BYTES =
+  72;
 
 type RegisterBody = {
   name?: unknown;
@@ -21,27 +31,54 @@ type RegisterBody = {
   password?: unknown;
 };
 
+/*
+ * =========================================================
+ * RESPOSTA
+ * =========================================================
+ */
+
 function jsonResponse(
   body: Record<string, unknown>,
   status = 200,
-  additionalHeaders?: Record<string, string>
+  additionalHeaders?: Record<
+    string,
+    string
+  >
 ) {
-  return NextResponse.json(body, {
-    status,
-    headers: {
-      "Cache-Control":
-        "no-store, no-cache, must-revalidate",
-      Pragma: "no-cache",
-      "X-Content-Type-Options": "nosniff",
-      ...additionalHeaders,
-    },
-  });
+  return NextResponse.json(
+    body,
+    {
+      status,
+
+      headers: {
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate",
+
+        Pragma:
+          "no-cache",
+
+        "X-Content-Type-Options":
+          "nosniff",
+
+        ...additionalHeaders,
+      },
+    }
+  );
 }
+
+/*
+ * =========================================================
+ * NORMALIZAÇÃO
+ * =========================================================
+ */
 
 function normalizeName(
   value: unknown
 ) {
-  if (typeof value !== "string") {
+  if (
+    typeof value !==
+    "string"
+  ) {
     return "";
   }
 
@@ -54,7 +91,10 @@ function normalizeName(
 function normalizeEmail(
   value: unknown
 ) {
-  if (typeof value !== "string") {
+  if (
+    typeof value !==
+    "string"
+  ) {
     return "";
   }
 
@@ -79,17 +119,27 @@ function isValidEmail(
   );
 }
 
+/*
+ * =========================================================
+ * SENHA
+ * =========================================================
+ */
+
 function validatePassword(
   value: unknown
 ) {
-  if (typeof value !== "string") {
+  if (
+    typeof value !==
+    "string"
+  ) {
     return {
       valid: false,
       password: "",
     };
   }
 
-  const password = value;
+  const password =
+    value;
 
   const bytes =
     Buffer.byteLength(
@@ -110,13 +160,19 @@ function validatePassword(
   }
 
   const hasLowercase =
-    /[a-z]/.test(password);
+    /[a-z]/.test(
+      password
+    );
 
   const hasUppercase =
-    /[A-Z]/.test(password);
+    /[A-Z]/.test(
+      password
+    );
 
   const hasNumber =
-    /\d/.test(password);
+    /\d/.test(
+      password
+    );
 
   const hasSpecial =
     /[^a-zA-Z0-9]/.test(
@@ -134,6 +190,12 @@ function validatePassword(
   };
 }
 
+/*
+ * =========================================================
+ * ORIGEM
+ * =========================================================
+ */
+
 function isSameOrigin(
   request: Request
 ) {
@@ -149,13 +211,77 @@ function isSameOrigin(
   try {
     return (
       origin ===
-      new URL(request.url)
-        .origin
+      new URL(
+        request.url
+      ).origin
     );
   } catch {
     return false;
   }
 }
+
+/*
+ * =========================================================
+ * ERRO DE E-MAIL JÁ CADASTRADO
+ * =========================================================
+ *
+ * A mesma resposta é utilizada independentemente de
+ * a conta estar:
+ *
+ * - pendente;
+ * - ativa;
+ * - desativada;
+ * - administrativa.
+ *
+ * Não revelamos o estado interno da conta.
+ */
+
+function emailAlreadyRegisteredResponse() {
+  return jsonResponse(
+    {
+      error:
+        "Este e-mail já está vinculado a uma conta. Faça login ou recupere sua senha.",
+
+      code:
+        "EMAIL_ALREADY_REGISTERED",
+    },
+    409
+  );
+}
+
+/*
+ * =========================================================
+ * PRISMA UNIQUE CONSTRAINT
+ * =========================================================
+ *
+ * Mesmo que duas requisições cheguem praticamente
+ * ao mesmo tempo, o @unique do banco continua sendo
+ * nossa última barreira.
+ */
+
+function isUniqueConstraintError(
+  error: unknown
+) {
+  if (
+    typeof error !==
+      "object" ||
+    error === null ||
+    !("code" in error)
+  ) {
+    return false;
+  }
+
+  return (
+    error.code ===
+    "P2002"
+  );
+}
+
+/*
+ * =========================================================
+ * URL
+ * =========================================================
+ */
 
 function getAppUrl() {
   const configuredUrl =
@@ -174,7 +300,8 @@ function getAppUrl() {
         url.protocol ===
           "https:" ||
         (
-          process.env.NODE_ENV !==
+          process.env
+            .NODE_ENV !==
             "production" &&
           url.protocol ===
             "http:"
@@ -192,12 +319,18 @@ function getAppUrl() {
     "production"
   ) {
     throw new Error(
-      "NEXT_PUBLIC_APP_URL não configurada corretamente."
+      "NEXT_PUBLIC_APP_URL_INVALID"
     );
   }
 
   return "http://localhost:3000";
 }
+
+/*
+ * =========================================================
+ * RESEND
+ * =========================================================
+ */
 
 function getResend() {
   const apiKey =
@@ -207,7 +340,7 @@ function getResend() {
 
   if (!apiKey) {
     throw new Error(
-      "RESEND_API_KEY não configurada."
+      "RESEND_API_KEY_NOT_CONFIGURED"
     );
   }
 
@@ -217,13 +350,25 @@ function getResend() {
 }
 
 function getEmailFrom() {
-  return (
+  const emailFrom =
     process.env
-      .CUSTOMER_EMAIL_FROM
-      ?.trim() ||
-    "Laico <noreply@conta.capadociaproducoes.com.br>"
-  );
+      .EMAIL_FROM
+      ?.trim();
+
+  if (!emailFrom) {
+    throw new Error(
+      "EMAIL_FROM_NOT_CONFIGURED"
+    );
+  }
+
+  return emailFrom;
 }
+
+/*
+ * =========================================================
+ * E-MAIL DE CONFIRMAÇÃO
+ * =========================================================
+ */
 
 async function sendVerificationEmail({
   email,
@@ -238,29 +383,37 @@ async function sendVerificationEmail({
       getAppUrl()
     );
 
-  verificationUrl.searchParams.set(
-    "token",
-    token
-  );
+  verificationUrl
+    .searchParams
+    .set(
+      "token",
+      token
+    );
 
   const resend =
     getResend();
 
-  const { error } =
+  const {
+    error,
+  } =
     await resend.emails.send({
       from:
         getEmailFrom(),
 
-      to: [email],
+      to: [
+        email,
+      ],
 
       subject:
         "Confirme seu e-mail - Laico",
 
       html: `
 <!doctype html>
+
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
+
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1"
@@ -286,7 +439,9 @@ async function sendVerificationEmail({
       <tr>
         <td
           align="center"
-          style="padding:40px 16px;"
+          style="
+            padding:40px 16px;
+          "
         >
           <table
             role="presentation"
@@ -303,7 +458,9 @@ async function sendVerificationEmail({
           >
             <tr>
               <td
-                style="padding:36px;"
+                style="
+                  padding:36px;
+                "
               >
                 <div
                   style="
@@ -335,10 +492,12 @@ async function sendVerificationEmail({
                     line-height:1.6;
                   "
                 >
-                  Recebemos uma solicitação para criar
-                  sua conta. Para concluir o cadastro,
-                  confirme que este endereço de e-mail
-                  pertence a você.
+                  Recebemos uma solicitação
+                  para criar sua conta.
+
+                  Para concluir o cadastro,
+                  confirme que este endereço
+                  de e-mail pertence a você.
                 </p>
 
                 <a
@@ -364,7 +523,8 @@ async function sendVerificationEmail({
                     line-height:1.6;
                   "
                 >
-                  Este link é válido por 24 horas.
+                  Este link é válido por
+                  24 horas.
                 </p>
 
                 <p
@@ -375,9 +535,12 @@ async function sendVerificationEmail({
                     line-height:1.6;
                   "
                 >
-                  Se você não solicitou a criação desta
-                  conta, ignore este e-mail. Nenhuma conta
-                  será ativada sem a confirmação.
+                  Se você não solicitou a
+                  criação desta conta,
+                  ignore este e-mail.
+
+                  Nenhuma conta será ativada
+                  sem a confirmação.
                 </p>
               </td>
             </tr>
@@ -396,6 +559,12 @@ async function sendVerificationEmail({
     );
   }
 }
+
+/*
+ * =========================================================
+ * POST
+ * =========================================================
+ */
 
 export async function POST(
   request: Request
@@ -481,7 +650,8 @@ export async function POST(
       await request.text();
 
     if (
-      rawBody.length === 0 ||
+      rawBody.length ===
+        0 ||
       rawBody.length >
         MAX_BODY_SIZE
     ) {
@@ -500,7 +670,8 @@ export async function POST(
      * =====================================================
      */
 
-    let body: RegisterBody;
+    let body:
+      RegisterBody;
 
     try {
       body =
@@ -536,6 +707,7 @@ export async function POST(
     const {
       valid:
         passwordIsValid,
+
       password,
     } =
       validatePassword(
@@ -590,9 +762,6 @@ export async function POST(
      * =====================================================
      * RATE LIMIT POR IP
      * =====================================================
-     *
-     * Impede uma origem de disparar centenas
-     * de cadastros/e-mails.
      */
 
     const clientIp =
@@ -608,7 +777,8 @@ export async function POST(
         identifier:
           clientIp,
 
-        limit: 10,
+        limit:
+          10,
 
         windowMs:
           15 *
@@ -644,9 +814,6 @@ export async function POST(
      * =====================================================
      * RATE LIMIT POR E-MAIL
      * =====================================================
-     *
-     * Continua protegendo o endereço mesmo
-     * caso o atacante troque de IP.
      */
 
     const emailRateLimit =
@@ -657,7 +824,8 @@ export async function POST(
         identifier:
           email,
 
-        limit: 4,
+        limit:
+          4,
 
         windowMs:
           15 *
@@ -691,21 +859,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * HASH DA SENHA
-     * =====================================================
-     *
-     * Só executamos bcrypt depois do rate limit.
-     */
-
-    const passwordHash =
-      await bcrypt.hash(
-        password,
-        12
-      );
-
-    /*
-     * =====================================================
-     * PROCURA USUÁRIO
+     * PROCURA O E-MAIL ANTES DE ALTERAR QUALQUER COISA
      * =====================================================
      */
 
@@ -716,65 +870,121 @@ export async function POST(
         },
 
         select: {
-          id: true,
-          role: true,
+          id:
+            true,
+
+          role:
+            true,
+
+          password:
+            true,
+
           accountStatus:
+            true,
+
+          emailVerifiedAt:
+            true,
+
+          disabledAt:
             true,
         },
       });
 
     /*
-     * Conta ADMIN, ACTIVE ou DISABLED:
+     * =====================================================
+     * E-MAIL JÁ POSSUI CONTA
+     * =====================================================
      *
-     * nunca alteramos senha, nome ou estado.
+     * MUITO IMPORTANTE:
      *
-     * A resposta propositalmente não revela
-     * se aquele endereço possui uma conta.
+     * Somente GUEST puro, criado pelo checkout e ainda
+     * sem senha, pode ser convertido em cadastro.
+     *
+     * PENDING_VERIFICATION nunca passa daqui.
+     *
+     * Portanto, repetir cadastro NÃO consegue substituir
+     * nome ou senha de uma conta pendente.
      */
 
     if (
       existingUser &&
       (
-        existingUser.role ===
-          "ADMIN" ||
-        existingUser.accountStatus ===
-          "ACTIVE" ||
-        existingUser.accountStatus ===
-          "DISABLED"
+        existingUser.role !==
+          "USER" ||
+        existingUser.accountStatus !==
+          "GUEST" ||
+        Boolean(
+          existingUser.password
+        ) ||
+        Boolean(
+          existingUser.emailVerifiedAt
+        ) ||
+        Boolean(
+          existingUser.disabledAt
+        )
       )
     ) {
-      return jsonResponse({
-        success: true,
-
-        message:
-          "Se o cadastro puder ser realizado, enviaremos as instruções de confirmação para o e-mail informado.",
-      });
+      return emailAlreadyRegisteredResponse();
     }
 
-    let userId: string;
+    /*
+     * Só depois de saber que:
+     *
+     * - o usuário é novo;
+     * OU
+     * - é um GUEST legítimo sem senha;
+     *
+     * calculamos o hash.
+     */
+
+    const passwordHash =
+      await bcrypt.hash(
+        password,
+        12
+      );
+
+    let userId:
+      string;
 
     /*
      * =====================================================
-     * CLIENTE EXISTENTE COMO GUEST/PENDING
+     * GUEST → PENDING_VERIFICATION
      * =====================================================
+     *
+     * Este é o caso importante da compra sem login.
+     *
+     * O pedido já pertence a este User GUEST.
+     * Não criamos outro User.
+     *
+     * Após a confirmação do e-mail, ele poderá acessar
+     * os pedidos antigos pela mesma conta.
      */
 
     if (existingUser) {
-      const updatedUser =
-        await prisma.user.update({
+      /*
+       * updateMany é intencional.
+       *
+       * Repetimos TODAS as condições de segurança.
+       *
+       * Se outra requisição converter o GUEST alguns
+       * milissegundos antes desta, count será 0 e NÃO
+       * sobrescreveremos a senha criada pela primeira.
+       */
+
+      const conversion =
+        await prisma.user.updateMany({
           where: {
             id:
               existingUser.id,
-          },
 
-          data: {
-            name,
-
-            password:
-              passwordHash,
+            role:
+              "USER",
 
             accountStatus:
-              "PENDING_VERIFICATION",
+              "GUEST",
+
+            password:
+              null,
 
             emailVerifiedAt:
               null,
@@ -783,52 +993,89 @@ export async function POST(
               null,
           },
 
-          select: {
-            id: true,
-          },
-        });
-
-      userId =
-        updatedUser.id;
-    } else {
-      /*
-       * ===================================================
-       * CLIENTE NOVO
-       * ===================================================
-       */
-
-      const createdUser =
-        await prisma.user.create({
           data: {
             name,
-            email,
 
             password:
               passwordHash,
 
-            role:
-              "USER",
-
             accountStatus:
               "PENDING_VERIFICATION",
           },
-
-          select: {
-            id: true,
-          },
         });
 
+      if (
+        conversion.count !==
+        1
+      ) {
+        return emailAlreadyRegisteredResponse();
+      }
+
       userId =
-        createdUser.id;
+        existingUser.id;
+    } else {
+      /*
+       * ===================================================
+       * CLIENTE COMPLETAMENTE NOVO
+       * ===================================================
+       */
+
+      try {
+        const createdUser =
+          await prisma.user.create({
+            data: {
+              name,
+              email,
+
+              password:
+                passwordHash,
+
+              role:
+                "USER",
+
+              accountStatus:
+                "PENDING_VERIFICATION",
+            },
+
+            select: {
+              id:
+                true,
+            },
+          });
+
+        userId =
+          createdUser.id;
+      } catch (error) {
+        /*
+         * Proteção contra corrida:
+         *
+         * Requisição A:
+         * findUnique → não existe
+         *
+         * Requisição B:
+         * findUnique → não existe
+         *
+         * As duas tentam criar.
+         *
+         * PostgreSQL/@unique permite apenas uma.
+         */
+
+        if (
+          isUniqueConstraintError(
+            error
+          )
+        ) {
+          return emailAlreadyRegisteredResponse();
+        }
+
+        throw error;
+      }
     }
 
     /*
      * =====================================================
      * TOKEN DE VERIFICAÇÃO
      * =====================================================
-     *
-     * createEmailVerificationToken salva somente
-     * o hash no banco.
      */
 
     const {
@@ -852,12 +1099,13 @@ export async function POST(
       });
     } catch {
       /*
-       * Nunca imprimimos:
+       * Nunca registramos:
        *
-       * token
-       * e-mail
-       * senha
+       * - e-mail;
+       * - token;
+       * - senha.
        */
+
       console.error(
         "Não foi possível enviar o e-mail de confirmação do cadastro."
       );
@@ -865,7 +1113,10 @@ export async function POST(
       return jsonResponse(
         {
           error:
-            "Não foi possível enviar o e-mail de confirmação. Tente novamente em alguns minutos.",
+            "Não foi possível enviar o e-mail de confirmação. Vá para o login e solicite um novo e-mail de confirmação.",
+
+          code:
+            "EMAIL_VERIFICATION_SEND_FAILED",
         },
         503
       );
@@ -875,18 +1126,11 @@ export async function POST(
      * =====================================================
      * SUCESSO
      * =====================================================
-     *
-     * Ainda NÃO existe sessão.
-     *
-     * O usuário continua:
-     *
-     * PENDING_VERIFICATION
-     *
-     * até clicar no link recebido.
      */
 
     return jsonResponse({
-      success: true,
+      success:
+        true,
 
       requiresEmailVerification:
         true,
@@ -896,7 +1140,7 @@ export async function POST(
     });
   } catch (error) {
     /*
-     * Não colocamos dados sensíveis nos logs.
+     * Nunca registramos informações sensíveis.
      */
 
     console.error(

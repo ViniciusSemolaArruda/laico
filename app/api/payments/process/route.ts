@@ -1,18 +1,47 @@
-import { createHash } from "node:crypto";
+import {
+  createHash,
+} from "node:crypto";
 
-import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import {
+  cookies,
+} from "next/headers";
+
+import {
+  NextResponse,
+} from "next/server";
+
 import {
   MercadoPagoConfig,
   Order as MercadoPagoOrder,
 } from "mercadopago";
 
 import {
+  consumeRateLimit,
+  getClientIp,
+} from "@/lib/auth-rate-limit";
+
+import {
+  getCustomerSession,
+} from "@/lib/customer-auth";
+
+import {
   getOrderAccessCookieName,
   verifyOrderAccessToken,
 } from "@/lib/order-access";
-import { getPaymentExpirationDate } from "@/lib/payments/paymentExpiration";
-import { prisma } from "@/lib/prisma";
+
+import {
+  getPaymentExpirationDate,
+} from "@/lib/payments/paymentExpiration";
+
+import {
+  prisma,
+} from "@/lib/prisma";
+
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
 
 type SelectedPayment =
   | "pix"
@@ -22,8 +51,12 @@ type SelectedPayment =
 
 type PaymentFormData = {
   token?: string;
-  payment_method_id?: string;
-  installments?: number | string;
+
+  payment_method_id?:
+    string;
+
+  installments?:
+    number | string;
 
   payer?: {
     email?: string;
@@ -37,8 +70,12 @@ type PaymentFormData = {
 
 type PaymentRequestBody = {
   orderId?: string;
-  paymentMethod?: SelectedPayment;
-  formData?: PaymentFormData;
+
+  paymentMethod?:
+    SelectedPayment;
+
+  formData?:
+    PaymentFormData;
 };
 
 type MercadoPagoErrorItem = {
@@ -56,34 +93,61 @@ type MercadoPagoErrorResult = {
 const ACCESS_DENIED_MESSAGE =
   "Você não tem permissão para fazer isso! Acesso negado.";
 
-const MAXIMUM_REQUEST_SIZE = 20_000;
+const MAXIMUM_REQUEST_SIZE =
+  20_000;
+
+/*
+ * =========================================================
+ * RESPOSTA
+ * =========================================================
+ */
 
 function jsonResponse(
   body: Record<string, unknown>,
   status = 200
 ) {
-  return NextResponse.json(body, {
-    status,
-    headers: {
-      "Cache-Control":
-        "private, no-store, no-cache, must-revalidate",
-      Pragma: "no-cache",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
+  return NextResponse.json(
+    body,
+    {
+      status,
+
+      headers: {
+        "Cache-Control":
+          "private, no-store, no-cache, must-revalidate",
+
+        Pragma:
+          "no-cache",
+
+        "X-Content-Type-Options":
+          "nosniff",
+      },
+    }
+  );
 }
+
+/*
+ * =========================================================
+ * NORMALIZAÇÃO
+ * =========================================================
+ */
 
 function normalizeText(
   value: unknown,
   maximumLength = 255
 ) {
-  if (typeof value !== "string") {
+  if (
+    typeof value !==
+    "string"
+  ) {
     return "";
   }
 
   return value
     .trim()
-    .slice(0, maximumLength);
+    .slice(
+      0,
+      maximumLength
+    );
 }
 
 function normalizeDigits(
@@ -95,7 +159,40 @@ function normalizeDigits(
     maximumLength + 20
   )
     .replace(/\D/g, "")
-    .slice(0, maximumLength);
+    .slice(
+      0,
+      maximumLength
+    );
+}
+
+/*
+ * =========================================================
+ * SEGURANÇA HTTP
+ * =========================================================
+ */
+
+function isSameOrigin(
+  request: Request
+) {
+  const origin =
+    request.headers.get(
+      "origin"
+    );
+
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    return (
+      new URL(origin)
+        .origin ===
+      new URL(request.url)
+        .origin
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isValidOrderId(
@@ -106,54 +203,84 @@ function isValidOrderId(
   );
 }
 
+/*
+ * =========================================================
+ * PAGAMENTO
+ * =========================================================
+ */
+
 function isSelectedPayment(
   value: unknown
 ): value is SelectedPayment {
   return (
     value === "pix" ||
-    value === "credit_card" ||
-    value === "debit_card" ||
+    value ===
+      "credit_card" ||
+    value ===
+      "debit_card" ||
     value === "ticket"
   );
 }
 
 function isApprovedPaymentStatus(
-  status: string | null | undefined
+  status:
+    | string
+    | null
+    | undefined
 ) {
   const normalizedStatus =
     status?.toLowerCase();
 
   return (
-    normalizedStatus === "approved" ||
-    normalizedStatus === "processed" ||
-    normalizedStatus === "accredited"
+    normalizedStatus ===
+      "approved" ||
+    normalizedStatus ===
+      "processed" ||
+    normalizedStatus ===
+      "accredited"
   );
 }
 
 function isRejectedPaymentStatus(
-  status: string | null | undefined
+  status:
+    | string
+    | null
+    | undefined
 ) {
   const normalizedStatus =
     status?.toLowerCase();
 
   return (
-    normalizedStatus === "rejected" ||
-    normalizedStatus === "cancelled" ||
-    normalizedStatus === "canceled"
+    normalizedStatus ===
+      "rejected" ||
+    normalizedStatus ===
+      "cancelled" ||
+    normalizedStatus ===
+      "canceled"
   );
 }
 
 function getDatabasePaymentStatus(
-  status: string | null | undefined
-): "APPROVED" | "REJECTED" | "PENDING" {
+  status:
+    | string
+    | null
+    | undefined
+):
+  | "APPROVED"
+  | "REJECTED"
+  | "PENDING" {
   if (
-    isApprovedPaymentStatus(status)
+    isApprovedPaymentStatus(
+      status
+    )
   ) {
     return "APPROVED";
   }
 
   if (
-    isRejectedPaymentStatus(status)
+    isRejectedPaymentStatus(
+      status
+    )
   ) {
     return "REJECTED";
   }
@@ -162,9 +289,12 @@ function getDatabasePaymentStatus(
 }
 
 function getPaymentMethodType(
-  selectedPayment: SelectedPayment
+  selectedPayment:
+    SelectedPayment
 ) {
-  switch (selectedPayment) {
+  switch (
+    selectedPayment
+  ) {
     case "credit_card":
       return "credit_card";
 
@@ -179,6 +309,12 @@ function getPaymentMethodType(
   }
 }
 
+/*
+ * =========================================================
+ * IDEMPOTÊNCIA
+ * =========================================================
+ */
+
 function createIdempotencyKey({
   orderId,
   paymentMethodId,
@@ -189,35 +325,49 @@ function createIdempotencyKey({
   token?: string;
 }) {
   /*
-   * O token do cartão não é salvo nem
-   * registrado. Ele é utilizado somente
-   * na geração deste hash.
+   * O token do cartão nunca é armazenado.
+   *
+   * Ele é utilizado somente como entrada para
+   * este hash de idempotência.
    */
-  return createHash("sha256")
+  return createHash(
+    "sha256"
+  )
     .update(
       [
         orderId,
         paymentMethodId,
-        token || "payment-without-token",
+        token ||
+          "payment-without-token",
       ].join(":")
     )
     .digest("hex");
 }
 
+/*
+ * =========================================================
+ * ERROS DO MERCADO PAGO
+ * =========================================================
+ */
+
 function getFirstErrorItem(
   value: unknown
 ): MercadoPagoErrorItem | null {
   if (
-    Array.isArray(value) &&
+    Array.isArray(
+      value
+    ) &&
     value.length > 0 &&
-    typeof value[0] === "object" &&
+    typeof value[0] ===
+      "object" &&
     value[0] !== null
   ) {
     return value[0] as MercadoPagoErrorItem;
   }
 
   if (
-    typeof value === "object" &&
+    typeof value ===
+      "object" &&
     value !== null
   ) {
     return value as MercadoPagoErrorItem;
@@ -230,38 +380,44 @@ function getMercadoPagoError(
   error: unknown
 ): MercadoPagoErrorResult {
   if (
-    typeof error !== "object" ||
+    typeof error !==
+      "object" ||
     error === null
   ) {
     return {
       message:
-        typeof error === "string" &&
+        typeof error ===
+          "string" &&
         error.trim()
           ? error
           : "Erro desconhecido.",
+
       status: 500,
     };
   }
 
-  const data = error as {
-    message?: unknown;
-    error?: unknown;
-    status?: unknown;
-    statusCode?: unknown;
-    cause?: unknown;
-    errors?: unknown;
-
-    response?: {
+  const data =
+    error as {
+      message?: unknown;
+      error?: unknown;
       status?: unknown;
-      data?: unknown;
+      statusCode?: unknown;
+      cause?: unknown;
+      errors?: unknown;
+
+      response?: {
+        status?: unknown;
+        data?: unknown;
+      };
     };
-  };
 
   const responseData =
-    typeof data.response?.data ===
-      "object" &&
-    data.response.data !== null
-      ? (data.response.data as {
+    typeof data.response
+      ?.data === "object" &&
+    data.response.data !==
+      null
+      ? (data.response
+          .data as {
           message?: unknown;
           error?: unknown;
           status?: unknown;
@@ -271,18 +427,23 @@ function getMercadoPagoError(
       : null;
 
   const firstCause =
-    getFirstErrorItem(data.cause) ||
+    getFirstErrorItem(
+      data.cause
+    ) ||
     getFirstErrorItem(
       responseData?.cause
     );
 
   const firstError =
-    getFirstErrorItem(data.errors) ||
+    getFirstErrorItem(
+      data.errors
+    ) ||
     getFirstErrorItem(
       responseData?.errors
     );
 
-  const possibleMessages: unknown[] = [
+  const possibleMessages:
+    unknown[] = [
     data.message,
     data.error,
     responseData?.message,
@@ -297,12 +458,18 @@ function getMercadoPagoError(
 
   const message =
     possibleMessages.find(
-      (value): value is string =>
-        typeof value === "string" &&
-        value.trim().length > 0
-    ) || "Erro desconhecido.";
+      (
+        value
+      ): value is string =>
+        typeof value ===
+          "string" &&
+        value.trim()
+          .length > 0
+    ) ||
+    "Erro desconhecido.";
 
-  const possibleStatuses: unknown[] = [
+  const possibleStatuses:
+    unknown[] = [
     data.status,
     data.statusCode,
     data.response?.status,
@@ -311,9 +478,14 @@ function getMercadoPagoError(
 
   const status =
     possibleStatuses.find(
-      (value): value is number =>
-        typeof value === "number" &&
-        Number.isInteger(value)
+      (
+        value
+      ): value is number =>
+        typeof value ===
+          "number" &&
+        Number.isInteger(
+          value
+        )
     ) || 500;
 
   return {
@@ -322,10 +494,22 @@ function getMercadoPagoError(
   };
 }
 
+/*
+ * =========================================================
+ * POST
+ * =========================================================
+ */
+
 export async function POST(
   request: Request
 ) {
   try {
+    /*
+     * =====================================================
+     * CONFIGURAÇÃO
+     * =====================================================
+     */
+
     const accessToken =
       process.env
         .MERCADO_PAGO_ACCESS_TOKEN;
@@ -345,6 +529,32 @@ export async function POST(
       );
     }
 
+    /*
+     * =====================================================
+     * ORIGEM
+     * =====================================================
+     */
+
+    if (
+      !isSameOrigin(
+        request
+      )
+    ) {
+      return jsonResponse(
+        {
+          error:
+            ACCESS_DENIED_MESSAGE,
+        },
+        403
+      );
+    }
+
+    /*
+     * =====================================================
+     * CONTENT-TYPE
+     * =====================================================
+     */
+
     const contentType =
       request.headers.get(
         "content-type"
@@ -353,7 +563,9 @@ export async function POST(
     if (
       !contentType
         ?.toLowerCase()
-        .includes("application/json")
+        .includes(
+          "application/json"
+        )
     ) {
       return jsonResponse(
         {
@@ -364,11 +576,18 @@ export async function POST(
       );
     }
 
-    const contentLength = Number(
-      request.headers.get(
-        "content-length"
-      ) || 0
-    );
+    /*
+     * =====================================================
+     * TAMANHO
+     * =====================================================
+     */
+
+    const contentLength =
+      Number(
+        request.headers.get(
+          "content-length"
+        ) || 0
+      );
 
     if (
       Number.isFinite(
@@ -386,7 +605,55 @@ export async function POST(
       );
     }
 
-    let body: PaymentRequestBody;
+    /*
+     * =====================================================
+     * RATE LIMIT POR IP
+     * =====================================================
+     */
+
+    const clientIp =
+      getClientIp(request);
+
+    const ipLimit =
+      await consumeRateLimit({
+        scope:
+          "payment-process-ip",
+
+        identifier:
+          clientIp,
+
+        limit: 40,
+
+        windowMs:
+          15 * 60 * 1000,
+
+        blockMs:
+          30 * 60 * 1000,
+      });
+
+    if (
+      !ipLimit.allowed
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+
+          retryAfterSeconds:
+            ipLimit.retryAfterSeconds,
+        },
+        429
+      );
+    }
+
+    /*
+     * =====================================================
+     * BODY
+     * =====================================================
+     */
+
+    let body:
+      PaymentRequestBody;
 
     try {
       const rawBody =
@@ -405,9 +672,10 @@ export async function POST(
         );
       }
 
-      body = JSON.parse(
-        rawBody
-      ) as PaymentRequestBody;
+      body =
+        JSON.parse(
+          rawBody
+        ) as PaymentRequestBody;
     } catch {
       return jsonResponse(
         {
@@ -418,18 +686,21 @@ export async function POST(
       );
     }
 
-    const orderId = normalizeText(
-      body.orderId,
-      100
-    );
+    const orderId =
+      normalizeText(
+        body.orderId,
+        100
+      );
 
     /*
-     * Não revelamos se um ID inválido
-     * corresponde ou não a algum pedido.
+     * O comportamento não revela se
+     * determinado ID existe.
      */
     if (
       !orderId ||
-      !isValidOrderId(orderId)
+      !isValidOrderId(
+        orderId
+      )
     ) {
       return jsonResponse(
         {
@@ -441,47 +712,143 @@ export async function POST(
     }
 
     /*
-     * AUTORIZAÇÃO ANTES DA CONSULTA
-     * COMPLETA DO PEDIDO.
+     * =====================================================
+     * AUTORIZAÇÃO
+     * =====================================================
      *
-     * Conhecer somente o ID cms...
-     * não concede acesso ao pagamento.
+     * REGRA:
+     *
+     * Cliente logado:
+     * CustomerSession é a autoridade.
+     *
+     * Visitante:
+     * OrderAccessToken é a autoridade.
+     *
+     * Se existe CustomerSession válida,
+     * NÃO fazemos fallback para token de
+     * visitante.
      */
-    const cookieStore =
-      await cookies();
 
-    const orderAccessToken =
-      cookieStore.get(
-        getOrderAccessCookieName(
-          orderId
-        )
-      )?.value;
+    const customerSession =
+      await getCustomerSession();
 
-    if (!orderAccessToken) {
-      return jsonResponse(
-        {
-          error:
-            ACCESS_DENIED_MESSAGE,
-        },
-        403
-      );
+    let authorizedUserId:
+      string;
+
+    if (
+      customerSession
+    ) {
+      /*
+       * O getCustomerSession() já verifica:
+       *
+       * - hash da sessão;
+       * - expiração;
+       * - revokedAt;
+       * - conta ACTIVE;
+       * - e-mail verificado;
+       * - conta não desativada.
+       */
+      authorizedUserId =
+        customerSession.userId;
+    } else {
+      /*
+       * Nenhuma sessão de cliente:
+       * exigimos o token secreto daquele pedido.
+       */
+
+      const cookieStore =
+        await cookies();
+
+      const orderAccessToken =
+        cookieStore.get(
+          getOrderAccessCookieName(
+            orderId
+          )
+        )?.value;
+
+      if (
+        !orderAccessToken
+      ) {
+        return jsonResponse(
+          {
+            error:
+              ACCESS_DENIED_MESSAGE,
+          },
+          403
+        );
+      }
+
+      const orderAccess =
+        await verifyOrderAccessToken({
+          token:
+            orderAccessToken,
+
+          expectedOrderId:
+            orderId,
+        });
+
+      if (
+        !orderAccess
+      ) {
+        return jsonResponse(
+          {
+            error:
+              ACCESS_DENIED_MESSAGE,
+          },
+          403
+        );
+      }
+
+      authorizedUserId =
+        orderAccess.userId;
     }
 
-    const orderAccess =
-      await verifyOrderAccessToken({
-        token: orderAccessToken,
-        expectedOrderId: orderId,
+    /*
+     * =====================================================
+     * RATE LIMIT DO PEDIDO AUTORIZADO
+     * =====================================================
+     *
+     * Aqui já sabemos que existe uma credencial
+     * válida. Não usamos somente o ID público.
+     */
+
+    const orderLimit =
+      await consumeRateLimit({
+        scope:
+          "payment-process-order",
+
+        identifier:
+          `${authorizedUserId}:${orderId}`,
+
+        limit: 20,
+
+        windowMs:
+          15 * 60 * 1000,
+
+        blockMs:
+          30 * 60 * 1000,
       });
 
-    if (!orderAccess) {
+    if (
+      !orderLimit.allowed
+    ) {
       return jsonResponse(
         {
           error:
-            ACCESS_DENIED_MESSAGE,
+            "Muitas tentativas de pagamento. Aguarde alguns minutos e tente novamente.",
+
+          retryAfterSeconds:
+            orderLimit.retryAfterSeconds,
         },
-        403
+        429
       );
     }
+
+    /*
+     * =====================================================
+     * FORMA DE PAGAMENTO
+     * =====================================================
+     */
 
     const selectedPayment =
       body.paymentMethod;
@@ -505,11 +872,14 @@ export async function POST(
 
     const paymentMethodId =
       normalizeText(
-        formData?.payment_method_id,
+        formData
+          ?.payment_method_id,
         50
       ).toLowerCase();
 
-    if (!paymentMethodId) {
+    if (
+      !paymentMethodId
+    ) {
       return jsonResponse(
         {
           error:
@@ -519,10 +889,28 @@ export async function POST(
       );
     }
 
+    /*
+     * =====================================================
+     * PEDIDO
+     * =====================================================
+     *
+     * Essa consulta já contém simultaneamente:
+     *
+     * - orderId solicitado;
+     * - userId autorizado.
+     *
+     * Portanto não carregamos os dados sensíveis
+     * de um pedido de outra pessoa.
+     */
+
     const order =
-      await prisma.order.findUnique({
+      await prisma.order.findFirst({
         where: {
-          id: orderId,
+          id:
+            orderId,
+
+          userId:
+            authorizedUserId,
         },
 
         select: {
@@ -533,16 +921,22 @@ export async function POST(
 
           user: {
             select: {
-              email: true,
-              cpf: true,
+              email:
+                true,
+
+              cpf:
+                true,
             },
           },
 
           payment: {
             select: {
-              status: true,
+              status:
+                true,
+
               mercadoPagoPaymentId:
                 true,
+
               mercadoPagoPreferenceId:
                 true,
             },
@@ -550,25 +944,27 @@ export async function POST(
 
           items: {
             select: {
-              name: true,
-              price: true,
-              quantity: true,
-              productId: true,
+              name:
+                true,
+
+              price:
+                true,
+
+              quantity:
+                true,
+
+              productId:
+                true,
             },
           },
         },
       });
 
     /*
-     * Pedido inexistente e pedido de
-     * outro usuário recebem exatamente
-     * a mesma resposta.
+     * Inexistente e pertencente a outra
+     * pessoa produzem a mesma resposta.
      */
-    if (
-      !order ||
-      order.userId !==
-        orderAccess.userId
-    ) {
+    if (!order) {
       return jsonResponse(
         {
           error:
@@ -578,9 +974,17 @@ export async function POST(
       );
     }
 
+    /*
+     * =====================================================
+     * ESTADO DO PEDIDO
+     * =====================================================
+     */
+
     if (
-      order.status === "PAID" ||
-      order.payment?.status ===
+      order.status ===
+        "PAID" ||
+      order.payment
+        ?.status ===
         "APPROVED"
     ) {
       return jsonResponse(
@@ -610,7 +1014,8 @@ export async function POST(
     }
 
     if (
-      order.items.length === 0
+      order.items.length ===
+      0
     ) {
       return jsonResponse(
         {
@@ -622,11 +1027,17 @@ export async function POST(
     }
 
     /*
-     * O valor utilizado no Mercado Pago
-     * vem exclusivamente do banco.
+     * =====================================================
+     * VALOR
+     * =====================================================
+     *
+     * Sempre vem do banco.
      */
+
     const transactionAmount =
-      Number(order.total);
+      Number(
+        order.total
+      );
 
     if (
       !Number.isFinite(
@@ -643,12 +1054,22 @@ export async function POST(
       );
     }
 
+    /*
+     * =====================================================
+     * CARTÃO
+     * =====================================================
+     */
+
     const isCard =
       selectedPayment ===
         "credit_card" ||
       selectedPayment ===
         "debit_card";
 
+    /*
+     * Este token existe apenas na memória
+     * desta requisição.
+     */
     const paymentToken =
       normalizeText(
         formData?.token,
@@ -668,9 +1089,11 @@ export async function POST(
       );
     }
 
-    const installments = Number(
-      formData?.installments
-    );
+    const installments =
+      Number(
+        formData
+          ?.installments
+      );
 
     const normalizedInstallments =
       isCard &&
@@ -683,10 +1106,16 @@ export async function POST(
         : 1;
 
     /*
-     * E-mail e CPF vêm exclusivamente
-     * do banco. Os dados enviados pelo
-     * navegador não são utilizados.
+     * =====================================================
+     * PAGADOR
+     * =====================================================
+     *
+     * E-mail e CPF vêm do banco.
+     *
+     * formData.payer não controla estes
+     * valores no servidor.
      */
+
     const payerEmail =
       normalizeText(
         order.user.email,
@@ -695,7 +1124,9 @@ export async function POST(
 
     if (
       !payerEmail ||
-      !payerEmail.includes("@")
+      !payerEmail.includes(
+        "@"
+      )
     ) {
       return jsonResponse(
         {
@@ -713,8 +1144,8 @@ export async function POST(
       );
 
     if (
-      identificationNumber.length !==
-      11
+      identificationNumber
+        .length !== 11
     ) {
       return jsonResponse(
         {
@@ -725,10 +1156,22 @@ export async function POST(
       );
     }
 
+    /*
+     * =====================================================
+     * EXPIRAÇÃO
+     * =====================================================
+     */
+
     const expiresAt =
       getPaymentExpirationDate(
         paymentMethodId
       );
+
+    /*
+     * =====================================================
+     * PAYMENT METHOD
+     * =====================================================
+     */
 
     const paymentMethodType =
       getPaymentMethodType(
@@ -742,11 +1185,16 @@ export async function POST(
       installments?: number;
       statement_descriptor?: string;
     } = {
-      id: paymentMethodId,
-      type: paymentMethodType,
+      id:
+        paymentMethodId,
+
+      type:
+        paymentMethodType,
     };
 
-    if (paymentToken) {
+    if (
+      paymentToken
+    ) {
       paymentMethod.token =
         paymentToken;
     }
@@ -759,28 +1207,50 @@ export async function POST(
         "LAICO";
     }
 
+    /*
+     * =====================================================
+     * PAYER
+     * =====================================================
+     */
+
     const payer: {
       email: string;
-      entity_type: "individual";
+
+      entity_type:
+        "individual";
+
       identification: {
         type: "CPF";
         number: string;
       };
     } = {
-      email: payerEmail,
-      entity_type: "individual",
+      email:
+        payerEmail,
+
+      entity_type:
+        "individual",
 
       identification: {
-        type: "CPF",
+        type:
+          "CPF",
+
         number:
           identificationNumber,
       },
     };
 
+    /*
+     * =====================================================
+     * TRANSAÇÃO MP
+     * =====================================================
+     */
+
     const transactionPayment: {
       amount: string;
+
       payment_method:
         typeof paymentMethod;
+
       expiration_time?: string;
     } = {
       amount:
@@ -797,13 +1267,22 @@ export async function POST(
         expiresAt.toISOString();
     }
 
+    /*
+     * =====================================================
+     * CLIENTE MERCADO PAGO
+     * =====================================================
+     */
+
     const mercadoPagoClient =
       new MercadoPagoConfig({
         accessToken,
 
         options: {
-          timeout: 15_000,
-          testToken: isTestMode,
+          timeout:
+            15_000,
+
+          testToken:
+            isTestMode,
         },
       });
 
@@ -812,22 +1291,41 @@ export async function POST(
         mercadoPagoClient
       );
 
+    /*
+     * =====================================================
+     * IDEMPOTÊNCIA
+     * =====================================================
+     */
+
     const idempotencyKey =
       createIdempotencyKey({
-        orderId: order.id,
+        orderId:
+          order.id,
+
         paymentMethodId,
+
         token:
           paymentToken ||
           undefined,
       });
 
+    /*
+     * =====================================================
+     * CRIAÇÃO NO MERCADO PAGO
+     * =====================================================
+     */
+
     const mercadoPagoResponse =
       await mercadoPagoOrder.create({
         body: {
-          type: "online",
+          type:
+            "online",
+
           processing_mode:
             "automatic",
-          capture_mode: "automatic",
+
+          capture_mode:
+            "automatic",
 
           external_reference:
             order.id,
@@ -837,7 +1335,8 @@ export async function POST(
               2
             ),
 
-          currency: "BRL",
+          currency:
+            "BRL",
 
           description:
             `Pedido ${order.id} - Laico`,
@@ -850,27 +1349,38 @@ export async function POST(
             ],
           },
 
-          items: order.items.map(
-            (item) => ({
-              title: item.name,
+          items:
+            order.items.map(
+              (item) => ({
+                title:
+                  item.name,
 
-              unit_price: Number(
-                item.price
-              ).toFixed(2),
+                unit_price:
+                  Number(
+                    item.price
+                  ).toFixed(
+                    2
+                  ),
 
-              quantity:
-                item.quantity,
+                quantity:
+                  item.quantity,
 
-              external_code:
-                item.productId,
-            })
-          ),
+                external_code:
+                  item.productId,
+              })
+            ),
         },
 
         requestOptions: {
           idempotencyKey,
         },
       });
+
+    /*
+     * =====================================================
+     * RESPOSTA MP
+     * =====================================================
+     */
 
     const paymentResponse =
       mercadoPagoResponse
@@ -882,7 +1392,7 @@ export async function POST(
       !paymentResponse?.id
     ) {
       throw new Error(
-        "O Mercado Pago não retornou os dados completos do pagamento."
+        "MERCADO_PAGO_INCOMPLETE_RESPONSE"
       );
     }
 
@@ -921,19 +1431,23 @@ export async function POST(
         : "PENDING";
 
     const returnedPaymentMethod =
-      paymentResponse.payment_method;
+      paymentResponse
+        .payment_method;
 
     const ticketUrl =
       returnedPaymentMethod
-        ?.ticket_url || null;
+        ?.ticket_url ||
+      null;
 
     const pixQrCode =
       returnedPaymentMethod
-        ?.qr_code || null;
+        ?.qr_code ||
+      null;
 
     const pixQrCodeBase64 =
       returnedPaymentMethod
-        ?.qr_code_base64 || null;
+        ?.qr_code_base64 ||
+      null;
 
     const barcode =
       returnedPaymentMethod
@@ -943,18 +1457,27 @@ export async function POST(
       null;
 
     /*
-     * Atualizamos somente se o pedido
-     * ainda não foi cancelado, devolvido
-     * ou reembolsado durante a chamada.
+     * =====================================================
+     * REVALIDAÇÃO
+     * =====================================================
+     *
+     * O pedido pode ter mudado enquanto
+     * aguardávamos a API externa.
      */
+
     const currentOrder =
-      await prisma.order.findUnique({
+      await prisma.order.findFirst({
         where: {
-          id: order.id,
+          id:
+            order.id,
+
+          userId:
+            authorizedUserId,
         },
 
         select: {
-          status: true,
+          status:
+            true,
         },
       });
 
@@ -976,13 +1499,21 @@ export async function POST(
       );
     }
 
+    /*
+     * =====================================================
+     * ATUALIZAÇÃO DO BANCO
+     * =====================================================
+     */
+
     await prisma.order.update({
       where: {
-        id: order.id,
+        id:
+          order.id,
       },
 
       data: {
-        status: orderStatus,
+        status:
+          orderStatus,
 
         expiresAt:
           paymentApproved
@@ -1043,30 +1574,40 @@ export async function POST(
 
         history: {
           create: {
-            status: orderStatus,
+            status:
+              orderStatus,
 
-            title: paymentApproved
-              ? "Pagamento aprovado"
-              : paymentRejected
-                ? "Pagamento recusado"
-                : "Pagamento iniciado",
+            title:
+              paymentApproved
+                ? "Pagamento aprovado"
+                : paymentRejected
+                  ? "Pagamento recusado"
+                  : "Pagamento iniciado",
 
-            message: paymentApproved
-              ? "O pagamento foi confirmado pelo Mercado Pago."
-              : paymentRejected
-                ? "O pagamento não foi aprovado. Você pode tentar novamente com outra forma de pagamento."
-                : `Aguardando a confirmação do pagamento até ${expiresAt.toLocaleString(
-                    "pt-BR"
-                  )}.`,
+            message:
+              paymentApproved
+                ? "O pagamento foi confirmado pelo Mercado Pago."
+                : paymentRejected
+                  ? "O pagamento não foi aprovado. Você pode tentar novamente com outra forma de pagamento."
+                  : `Aguardando a confirmação do pagamento até ${expiresAt.toLocaleString(
+                      "pt-BR"
+                    )}.`,
           },
         },
       },
     });
 
+    /*
+     * =====================================================
+     * RETORNO SEGURO
+     * =====================================================
+     */
+
     return jsonResponse({
-      id: String(
-        paymentResponse.id
-      ),
+      id:
+        String(
+          paymentResponse.id
+        ),
 
       mercadoPagoOrderId:
         String(
@@ -1081,7 +1622,8 @@ export async function POST(
       statusDetail,
 
       paymentMethod:
-        returnedPaymentMethod?.id ||
+        returnedPaymentMethod
+          ?.id ||
         paymentMethodId,
 
       pixQrCode,
@@ -1091,27 +1633,42 @@ export async function POST(
     });
   } catch (error) {
     const mercadoPagoError =
-      getMercadoPagoError(error);
+      getMercadoPagoError(
+        error
+      );
 
     /*
-     * Não registramos token do cartão,
-     * CPF, cookie, endereço, corpo da
-     * requisição ou resposta completa.
+     * Nunca imprimimos:
+     *
+     * - token do cartão;
+     * - CPF;
+     * - e-mail;
+     * - cookie;
+     * - body;
+     * - Access Token do MP;
+     * - resposta completa do MP.
      */
+
     console.error(
       "Falha ao processar pagamento no Mercado Pago:",
       {
         status:
           mercadoPagoError.status,
 
-        message:
-          mercadoPagoError.message,
+        errorType:
+          error instanceof Error
+            ? error.name
+            : "UnknownError",
       }
     );
 
     const normalizedMessage =
       mercadoPagoError.message
         .toLowerCase();
+
+    /*
+     * Credenciais.
+     */
 
     if (
       mercadoPagoError.status ===
@@ -1132,6 +1689,10 @@ export async function POST(
       );
     }
 
+    /*
+     * Falha temporária MP.
+     */
+
     if (
       normalizedMessage.includes(
         "internal_error"
@@ -1148,6 +1709,10 @@ export async function POST(
         502
       );
     }
+
+    /*
+     * Token do cartão inválido/expirado.
+     */
 
     if (
       normalizedMessage.includes(
@@ -1172,14 +1737,16 @@ export async function POST(
     const responseStatus =
       mercadoPagoError.status >=
         400 &&
-      mercadoPagoError.status < 500
+      mercadoPagoError.status <
+        500
         ? mercadoPagoError.status
         : 502;
 
     return jsonResponse(
       {
         error:
-          process.env.NODE_ENV ===
+          process.env
+            .NODE_ENV ===
           "development"
             ? `Mercado Pago: ${mercadoPagoError.message}`
             : "Não foi possível processar o pagamento.",

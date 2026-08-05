@@ -1,17 +1,23 @@
 import {
   ChevronRight,
-  CircleUserRound,
   Clock3,
   MapPin,
   Package,
   ShieldCheck,
   ShoppingBag,
 } from "lucide-react";
+
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import Header from "@/components/Header";
+import AccountActions from "@/components/account/AccountActions";
+import AccountAddresses from "@/components/account/AccountAddresses";
+import AccountPasswordForm from "@/components/account/AccountPasswordForm";
+import AccountProfileForm from "@/components/account/AccountProfileForm";
+
 import Footer from "@/components/Footer";
+import Header from "@/components/Header";
+
 import { getCustomerSession } from "@/lib/customer-auth";
 import { prisma } from "@/lib/prisma";
 
@@ -38,7 +44,8 @@ function formatDate(
   return new Intl.DateTimeFormat(
     "pt-BR",
     {
-      dateStyle: "medium",
+      dateStyle:
+        "medium",
     }
   ).format(date);
 }
@@ -127,13 +134,8 @@ export default async function MinhaContaPage() {
 
   /*
    * =====================================================
-   * CONTA
+   * USUÁRIO
    * =====================================================
-   *
-   * Não procuramos usuário por e-mail vindo
-   * do navegador.
-   *
-   * O ID vem da sessão HttpOnly validada.
    */
 
   const user =
@@ -141,6 +143,9 @@ export default async function MinhaContaPage() {
       where: {
         id:
           session.userId,
+
+        role:
+          "USER",
 
         accountStatus:
           "ACTIVE",
@@ -158,21 +163,41 @@ export default async function MinhaContaPage() {
         name: true,
         email: true,
         phone: true,
-        createdAt: true,
+
+        _count: {
+          select: {
+            addresses: {
+              where: {
+                archivedAt:
+                  null,
+              },
+            },
+
+            orders:
+              true,
+          },
+        },
 
         addresses: {
+          where: {
+            archivedAt:
+              null,
+          },
+
           orderBy: [
             {
               isDefault:
                 "desc",
             },
+
             {
               createdAt:
                 "desc",
             },
           ],
 
-          take: 3,
+          take:
+            10,
 
           select: {
             id: true,
@@ -182,8 +207,10 @@ export default async function MinhaContaPage() {
             city: true,
             neighborhood:
               true,
-            street: true,
-            number: true,
+            street:
+              true,
+            number:
+              true,
             complement:
               true,
             isDefault:
@@ -194,13 +221,6 @@ export default async function MinhaContaPage() {
     });
 
   if (!user) {
-    /*
-     * A sessão pode ter sido criada antes
-     * da conta ser desativada.
-     *
-     * getCustomerSession já bloqueia isso,
-     * mas repetimos a proteção aqui.
-     */
     redirect(
       "/entrar"
     );
@@ -210,13 +230,6 @@ export default async function MinhaContaPage() {
    * =====================================================
    * PEDIDOS
    * =====================================================
-   *
-   * REGRA CRÍTICA:
-   *
-   * where.userId = session.userId
-   *
-   * Nunca aceitamos userId vindo de query,
-   * URL ou formulário.
    */
 
   const orders =
@@ -231,13 +244,15 @@ export default async function MinhaContaPage() {
           "desc",
       },
 
-      take: 20,
+      take:
+        20,
 
       select: {
         id: true,
         status: true,
         total: true,
         createdAt: true,
+
         trackingCode:
           true,
 
@@ -253,19 +268,32 @@ export default async function MinhaContaPage() {
     <main className="min-h-screen bg-[#f4efe6]">
       <Header />
 
-      <section className="mx-auto max-w-[1200px] px-5 py-10 lg:px-8">
-        {/* CABEÇALHO */}
+      {/*
+       * ===================================================
+       * CONTAINER PRINCIPAL
+       * ===================================================
+       *
+       * max-w-6xl = aproximadamente 1152px.
+       *
+       * Em monitores grandes, o conteúdo não fica
+       * esticado de uma ponta até a outra.
+       */}
 
-        <div className="mb-8">
-          <p className="text-sm font-bold uppercase tracking-[0.14em] text-[#b98218]">
+      <div className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 sm:py-9">
+        {/* =================================================
+            CABEÇALHO
+        ================================================= */}
+
+        <div className="mb-6">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#b98218]">
             Área do cliente
           </p>
 
-          <h1 className="mt-2 text-[32px] font-extrabold text-[#20170f] md:text-[40px]">
+          <h1 className="mt-1 text-[28px] font-extrabold leading-tight text-[#20170f] sm:text-[34px]">
             Minha conta
           </h1>
 
-          <p className="mt-2 text-neutral-600">
+          <p className="mt-1 text-sm text-neutral-600">
             Bem-vindo,{" "}
             <strong>
               {user.name}
@@ -274,326 +302,290 @@ export default async function MinhaContaPage() {
           </p>
         </div>
 
-        {/* CARDS */}
+        {/* =================================================
+            RESUMO
+        =================================================
+            Flex-wrap faz os cards se reorganizarem
+            automaticamente conforme a largura.
+        */}
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-          <section className="rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#fff8e8] text-[#b98218]">
-              <ShoppingBag
-                size={21}
-              />
+        <div className="flex flex-wrap gap-4">
+          {/* PEDIDOS */}
+
+          <section className="min-w-[230px] flex-1 rounded-2xl border border-[#e8dcc2] bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#fff8e8] text-[#b98218]">
+                <ShoppingBag
+                  size={20}
+                />
+              </div>
+
+              <div>
+                <strong className="block text-[22px] leading-none text-[#20170f]">
+                  {
+                    user._count
+                      .orders
+                  }
+                </strong>
+
+                <p className="mt-1 text-xs text-neutral-500">
+                  Pedidos
+                </p>
+              </div>
             </div>
-
-            <strong className="mt-5 block text-[28px] text-[#20170f]">
-              {orders.length}
-            </strong>
-
-            <p className="text-sm text-neutral-500">
-              Pedidos recentes
-            </p>
           </section>
 
-          <section className="rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#fff8e8] text-[#b98218]">
-              <MapPin
-                size={21}
-              />
+          {/* ENDEREÇOS */}
+
+          <section className="min-w-[230px] flex-1 rounded-2xl border border-[#e8dcc2] bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#fff8e8] text-[#b98218]">
+                <MapPin
+                  size={20}
+                />
+              </div>
+
+              <div>
+                <strong className="block text-[22px] leading-none text-[#20170f]">
+                  {
+                    user._count
+                      .addresses
+                  }
+                </strong>
+
+                <p className="mt-1 text-xs text-neutral-500">
+                  Endereços
+                </p>
+              </div>
             </div>
-
-            <strong className="mt-5 block text-[28px] text-[#20170f]">
-              {
-                user
-                  .addresses
-                  .length
-              }
-            </strong>
-
-            <p className="text-sm text-neutral-500">
-              Endereços cadastrados
-            </p>
           </section>
 
-          <section className="rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-50 text-green-600">
-              <ShieldCheck
-                size={21}
-              />
+          {/* VERIFICAÇÃO */}
+
+          <section className="min-w-[230px] flex-1 rounded-2xl border border-[#e8dcc2] bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-600">
+                <ShieldCheck
+                  size={20}
+                />
+              </div>
+
+              <div>
+                <strong className="block text-sm text-green-700">
+                  Conta verificada
+                </strong>
+
+                <p className="mt-1 text-xs text-neutral-500">
+                  E-mail confirmado
+                </p>
+              </div>
             </div>
-
-            <strong className="mt-5 block text-lg text-green-700">
-              Conta verificada
-            </strong>
-
-            <p className="mt-1 text-sm text-neutral-500">
-              Seu e-mail foi confirmado
-            </p>
           </section>
         </div>
 
-        <div className="mt-7 grid grid-cols-1 gap-7 xl:grid-cols-[360px_1fr]">
-          {/* PERFIL */}
+        {/* =================================================
+            PERFIL + SENHA
+        ================================================= */}
 
-          <div className="space-y-7">
-            <section className="rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
-              <div className="mb-5 flex items-center gap-3">
-                <CircleUserRound
-                  size={22}
-                  className="text-[#b98218]"
-                />
+        <div className="mt-5 flex flex-wrap items-start gap-5">
+          <div className="min-w-[300px] basis-[500px] flex-1">
+            <AccountProfileForm
+              initialName={
+                user.name
+              }
+              initialPhone={
+                user.phone
+              }
+              email={
+                user.email
+              }
+            />
+          </div>
 
-                <h2 className="text-xl font-extrabold text-[#20170f]">
-                  Meus dados
-                </h2>
-              </div>
+          <div className="min-w-[300px] basis-[500px] flex-1">
+            <AccountPasswordForm />
+          </div>
+        </div>
 
-              <div className="space-y-4 text-sm">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-neutral-400">
-                    Nome
-                  </p>
+        {/* =================================================
+            ENDEREÇOS + CONTA
+        ================================================= */}
 
-                  <p className="mt-1 font-bold text-[#20170f]">
-                    {user.name}
-                  </p>
-                </div>
+        <div className="mt-5 flex flex-wrap items-start gap-5">
+          {/* ENDEREÇOS RECEBEM MAIS ESPAÇO */}
 
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-neutral-400">
-                    E-mail
-                  </p>
+          <div className="min-w-[300px] basis-[650px] flex-[1.4]">
+            <AccountAddresses
+              initialAddresses={
+                user.addresses
+              }
+            />
+          </div>
 
-                  <p className="mt-1 break-all text-[#20170f]">
-                    {user.email}
-                  </p>
-                </div>
+          {/* SESSÃO / DESATIVAÇÃO */}
 
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-neutral-400">
-                    Telefone
-                  </p>
+          <div className="min-w-[280px] basis-[340px] flex-1">
+            <AccountActions />
+          </div>
+        </div>
 
-                  <p className="mt-1 text-[#20170f]">
-                    {user.phone ||
-                      "Não informado"}
-                  </p>
-                </div>
-              </div>
-            </section>
+        {/* =================================================
+            PEDIDOS
+        ================================================= */}
 
-            {/* ENDEREÇOS */}
+        <section className="mt-5 overflow-hidden rounded-2xl border border-[#e8dcc2] bg-white shadow-sm">
+          {/* TOPO */}
 
-            <section className="rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
-              <div className="mb-5 flex items-center gap-3">
-                <MapPin
-                  size={21}
-                  className="text-[#b98218]"
-                />
+          <div className="flex items-center justify-between gap-4 border-b border-[#eee2cc] px-5 py-4 sm:px-6">
+            <div>
+              <h2 className="text-lg font-extrabold text-[#20170f] sm:text-xl">
+                Meus pedidos
+              </h2>
 
-                <h2 className="text-xl font-extrabold text-[#20170f]">
-                  Endereços
-                </h2>
-              </div>
+              <p className="mt-0.5 text-xs text-neutral-500 sm:text-sm">
+                Acompanhe suas compras
+                e entregas.
+              </p>
+            </div>
 
-              {user.addresses
-                .length === 0 ? (
-                <p className="text-sm leading-6 text-neutral-500">
-                  Você ainda não possui
-                  endereços cadastrados.
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {user.addresses.map(
-                    (
-                      address
-                    ) => (
-                      <div
-                        key={
-                          address.id
-                        }
-                        className="rounded-xl border border-[#eee2cc] bg-[#faf9f6] p-4"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <strong className="text-sm text-[#20170f]">
-                            {
-                              address.name
-                            }
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fff8e8] text-[#b98218]">
+              <Package
+                size={20}
+              />
+            </div>
+          </div>
+
+          {/* SEM PEDIDOS */}
+
+          {orders.length ===
+          0 ? (
+            <div className="px-5 py-10 text-center">
+              <ShoppingBag
+                size={32}
+                className="mx-auto text-neutral-300"
+              />
+
+              <strong className="mt-3 block text-base text-[#20170f]">
+                Nenhum pedido
+              </strong>
+
+              <p className="mt-1 text-sm text-neutral-500">
+                Quando você realizar
+                uma compra, ela
+                aparecerá aqui.
+              </p>
+
+              <Link
+                href="/"
+                className="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-[#b98218] px-5 text-sm font-bold text-white transition hover:bg-[#9f6f14]"
+              >
+                Ver produtos
+              </Link>
+            </div>
+          ) : (
+            /* LISTA */
+
+            <div className="divide-y divide-[#eee2cc]">
+              {orders.map(
+                (order) => (
+                  <article
+                    key={
+                      order.id
+                    }
+                    className="px-5 py-4 transition hover:bg-[#faf9f6] sm:px-6"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      {/* ESQUERDA */}
+
+                      <div className="min-w-[230px] flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong className="text-sm text-[#20170f] sm:text-base">
+                            Pedido #
+                            {order.id
+                              .slice(
+                                0,
+                                8
+                              )
+                              .toUpperCase()}
                           </strong>
 
-                          {address.isDefault && (
-                            <span className="rounded-full bg-[#fff8e8] px-2 py-1 text-[10px] font-bold text-[#b98218]">
-                              Principal
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold sm:text-[11px] ${getStatusStyle(
+                              order.status
+                            )}`}
+                          >
+                            {getStatusLabel(
+                              order.status
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500">
+                          <span className="flex items-center gap-1.5">
+                            <Clock3
+                              size={13}
+                            />
+
+                            {formatDate(
+                              order.createdAt
+                            )}
+                          </span>
+
+                          <span>
+                            {
+                              order
+                                .items
+                                .length
+                            }{" "}
+                            produto(s)
+                          </span>
+
+                          {order.trackingCode && (
+                            <span className="font-semibold text-blue-700">
+                              Rastreio disponível
                             </span>
                           )}
                         </div>
-
-                        <p className="mt-2 text-xs leading-5 text-neutral-500">
-                          {
-                            address.street
-                          }
-                          ,{" "}
-                          {
-                            address.number
-                          }
-                          <br />
-
-                          {
-                            address.neighborhood
-                          }
-                          {" · "}
-                          {
-                            address.city
-                          }
-                          /
-                          {
-                            address.state
-                          }
-                        </p>
-                      </div>
-                    )
-                  )}
-                </div>
-              )}
-            </section>
-          </div>
-
-          {/* PEDIDOS */}
-
-          <section className="overflow-hidden rounded-2xl border border-[#e8dcc2] bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-[#eee2cc] px-6 py-5">
-              <div>
-                <h2 className="text-[22px] font-extrabold text-[#20170f]">
-                  Meus pedidos
-                </h2>
-
-                <p className="mt-1 text-sm text-neutral-500">
-                  Acompanhe suas compras
-                  e entregas.
-                </p>
-              </div>
-
-              <Package
-                size={24}
-                className="text-[#b98218]"
-              />
-            </div>
-
-            {orders.length ===
-            0 ? (
-              <div className="px-6 py-16 text-center">
-                <ShoppingBag
-                  size={38}
-                  className="mx-auto text-neutral-300"
-                />
-
-                <strong className="mt-4 block text-lg text-[#20170f]">
-                  Nenhum pedido
-                </strong>
-
-                <p className="mt-2 text-sm text-neutral-500">
-                  Quando você realizar
-                  uma compra, ela aparecerá
-                  aqui.
-                </p>
-
-                <Link
-                  href="/"
-                  className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-[#b98218] px-6 text-sm font-bold text-white"
-                >
-                  Ver produtos
-                </Link>
-              </div>
-            ) : (
-              <div className="divide-y divide-[#eee2cc]">
-                {orders.map(
-                  (order) => (
-                    <div
-                      key={
-                        order.id
-                      }
-                      className="p-6 transition hover:bg-[#faf9f6]"
-                    >
-                      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <strong className="text-[#20170f]">
-                              Pedido #
-                              {order.id
-                                .slice(
-                                  0,
-                                  8
-                                )
-                                .toUpperCase()}
-                            </strong>
-
-                            <span
-                              className={`rounded-full px-3 py-1 text-[11px] font-extrabold ${getStatusStyle(
-                                order.status
-                              )}`}
-                            >
-                              {getStatusLabel(
-                                order.status
-                              )}
-                            </span>
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-neutral-500">
-                            <span className="flex items-center gap-1.5">
-                              <Clock3
-                                size={
-                                  14
-                                }
-                              />
-
-                              {formatDate(
-                                order.createdAt
-                              )}
-                            </span>
-
-                            <span>
-                              {
-                                order
-                                  .items
-                                  .length
-                              }{" "}
-                              produto(s)
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-5 sm:justify-end">
-                          <strong className="text-lg text-[#20170f]">
-                            {formatPrice(
-                              order.total
-                            )}
-                          </strong>
-
-                          <Link
-                            href={`/meus-pedidos/${order.id}`}
-                            aria-label="Acompanhar pedido"
-                            className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#e8dcc2] text-[#b98218] transition hover:bg-[#fff8e8]"
-                          >
-                            <ChevronRight
-                              size={
-                                19
-                              }
-                            />
-                          </Link>
-                        </div>
                       </div>
 
-                      {order.trackingCode && (
-                        <div className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-xs text-blue-800">
-                          Código de rastreamento disponível.
-                        </div>
-                      )}
+                      {/* DIREITA */}
+
+                      <div className="flex items-center gap-4">
+                        <strong className="whitespace-nowrap text-base text-[#20170f]">
+                          {formatPrice(
+                            order.total
+                          )}
+                        </strong>
+
+                        {/*
+                         * O ID não é autorização.
+                         * A página verifica a sessão
+                         * novamente no servidor.
+                         */}
+
+                        <Link
+                          href={`/meus-pedidos/${order.id}`}
+                          aria-label={`Acompanhar pedido ${order.id
+                            .slice(
+                              0,
+                              8
+                            )
+                            .toUpperCase()}`}
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e8dcc2] text-[#b98218] transition hover:bg-[#fff8e8]"
+                        >
+                          <ChevronRight
+                            size={18}
+                          />
+                        </Link>
+                      </div>
                     </div>
-                  )
-                )}
-              </div>
-            )}
-          </section>
-        </div>
-      </section>
+                  </article>
+                )
+              )}
+            </div>
+          )}
+        </section>
+      </div>
 
       <Footer />
     </main>
