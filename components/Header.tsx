@@ -5,7 +5,6 @@ import {
   Menu,
   Search,
   ShoppingCart,
-  Truck,
   User,
   X,
 } from "lucide-react";
@@ -16,6 +15,8 @@ import {
   useEffect,
   useState,
 } from "react";
+
+import PromotionalBar from "@/components/PromotionalBar/PromotionalBar";
 
 type SessionResponse = {
   authenticated?: boolean;
@@ -49,11 +50,7 @@ function getStoredCartCount() {
         storedCart
       );
 
-    if (
-      !Array.isArray(
-        parsed
-      )
-    ) {
+    if (!Array.isArray(parsed)) {
       return 0;
     }
 
@@ -109,32 +106,27 @@ export default function Header() {
   const [
     menuOpen,
     setMenuOpen,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     cartCount,
     setCartCount,
-  ] =
-    useState(0);
+  ] = useState(0);
 
   const [
     sessionLoaded,
     setSessionLoaded,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     authenticated,
     setAuthenticated,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     firstName,
     setFirstName,
-  ] =
-    useState("");
+  ] = useState("");
 
   const menuItems = [
     "Todos",
@@ -182,17 +174,6 @@ export default function Header() {
 
     updateCartCount();
 
-    /*
-     * storage:
-     * sincroniza outras abas.
-     *
-     * laico-cart-updated:
-     * permite atualização imediata na mesma aba.
-     *
-     * focus:
-     * sincroniza novamente quando o usuário
-     * volta para a página.
-     */
     window.addEventListener(
       "storage",
       handleStorage
@@ -255,9 +236,7 @@ export default function Header() {
             }
           );
 
-        if (
-          !response.ok
-        ) {
+        if (!response.ok) {
           setAuthenticated(
             false
           );
@@ -340,20 +319,15 @@ export default function Header() {
   return (
     <>
       <header className="relative z-40 w-full bg-[#fffdf7] shadow-sm">
-        {/* FRETE */}
+        {/* =================================================
+            FAIXA PROMOCIONAL
+        ================================================= */}
 
-        <div className="flex min-h-[34px] items-center justify-center bg-gradient-to-r from-[#b8872b] via-[#f3de9b] to-[#cfa74a] px-4 text-center text-[12px] font-semibold tracking-[0.3px] text-white sm:text-[15px]">
-          <Truck
-            size={15}
-            className="mr-2 shrink-0"
-          />
+        <PromotionalBar />
 
-          Frete Grátis acima de
-          R$1000* para todo o
-          Brasil
-        </div>
-
-        {/* HEADER PRINCIPAL */}
+        {/* =================================================
+            HEADER PRINCIPAL
+        ================================================= */}
 
         <div className="border-b border-[#f3e7c7] bg-[#fffdf7]">
           <div className="mx-auto flex min-h-[115px] max-w-[1370px] flex-col items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:flex-row">
@@ -400,9 +374,7 @@ export default function Header() {
                 aria-label="Abrir menu"
                 className="flex items-center gap-2 transition hover:text-[#d4af37] lg:hidden"
               >
-                <Menu
-                  size={24}
-                />
+                <Menu size={24} />
 
                 Menu
               </button>
@@ -410,9 +382,7 @@ export default function Header() {
               {/* FAVORITOS */}
 
               <div className="hidden cursor-pointer items-center gap-2 transition hover:text-[#d4af37] sm:flex">
-                <Heart
-                  size={22}
-                />
+                <Heart size={22} />
 
                 Favoritos
               </div>
@@ -420,9 +390,7 @@ export default function Header() {
               {/* CONTA */}
 
               <Link
-                href={
-                  accountHref
-                }
+                href={accountHref}
                 className="hidden max-w-[210px] items-center gap-2 transition hover:text-[#d4af37] sm:flex"
               >
                 <User
@@ -432,9 +400,7 @@ export default function Header() {
 
                 {sessionLoaded ? (
                   <span className="leading-tight">
-                    {
-                      accountLabel
-                    }
+                    {accountLabel}
                   </span>
                 ) : (
                   <span className="h-4 w-[115px] animate-pulse rounded bg-[#eadfbf]" />
@@ -466,7 +432,9 @@ export default function Header() {
           </div>
         </div>
 
-        {/* NAVEGAÇÃO DESKTOP */}
+        {/* =================================================
+            NAVEGAÇÃO DESKTOP
+        ================================================= */}
 
         <nav className="hidden overflow-x-auto border-b border-[#f3e7c7] bg-[#fffdf7] lg:block">
           <div className="mx-auto flex h-[56px] max-w-[1370px] items-center justify-between gap-6 whitespace-nowrap px-4 text-[12px] font-semibold uppercase tracking-[0.6px] text-[#9f7a2f] sm:px-6 sm:text-[13px]">
@@ -555,9 +523,7 @@ export default function Header() {
               aria-label="Fechar menu"
               className="text-[#b58b36]"
             >
-              <X
-                size={28}
-              />
+              <X size={28} />
             </button>
           </div>
 
@@ -586,17 +552,13 @@ export default function Header() {
 
           <div className="space-y-2 border-t border-[#f3e7c7] px-5 pt-6">
             <div className="flex h-11 items-center gap-3 text-[#9f7a2f]">
-              <Heart
-                size={20}
-              />
+              <Heart size={20} />
 
               Favoritos
             </div>
 
             <Link
-              href={
-                accountHref
-              }
+              href={accountHref}
               onClick={() =>
                 setMenuOpen(
                   false
@@ -611,9 +573,7 @@ export default function Header() {
 
               {sessionLoaded ? (
                 <span>
-                  {
-                    accountLabel
-                  }
+                  {accountLabel}
                 </span>
               ) : (
                 <span className="h-4 w-[150px] animate-pulse rounded bg-[#eadfbf]" />

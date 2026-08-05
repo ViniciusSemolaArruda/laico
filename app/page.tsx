@@ -18,6 +18,7 @@ import {
 
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import BannerCarousel from "@/components/BannerCarousel/BannerCarousel";
 
 const religions = [
   "Católicos e Protestantes",
@@ -270,7 +271,7 @@ export default function HomePage() {
   return (
     <main className="bg-white">
       <Header />
-
+      <BannerCarousel />
       <section className="max-w-[1370px] mx-auto px-6 pt-6">
         <div className="flex items-center gap-2 text-[14px] text-neutral-600 mb-8">
           <Home size={16} />
