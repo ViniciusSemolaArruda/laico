@@ -32,15 +32,6 @@ const messages = [
 ];
 
 export default function PromotionalBar() {
-  /*
-   * Duplicação necessária para
-   * criar o movimento infinito.
-   */
-  const repeatedMessages = [
-    ...messages,
-    ...messages,
-  ];
-
   return (
     <div
       className="promotionalBar"
@@ -48,45 +39,89 @@ export default function PromotionalBar() {
       aria-label="Informações e benefícios da loja"
     >
       <div className="promotionalTrack">
-        {repeatedMessages.map(
-          (message, index) => {
-            const Icon =
-              message.icon;
+        {/* ===============================================
+            PRIMEIRA CÓPIA
+        ================================================ */}
 
-            return (
-              <div
-                key={`${message.text}-${index}`}
-                className="promotionalItem"
-                aria-hidden={
-                  index >=
-                  messages.length
-                }
-              >
-                <Icon
-                  size={18}
-                  strokeWidth={2.7}
-                  className="promotionalIcon"
-                />
+        <div className="promotionalGroup">
+          {messages.map(
+            (message) => {
+              const Icon =
+                message.icon;
 
-                <span className="promotionalText">
-                  {message.text}
-                </span>
-
-                <span
-                  className="promotionalSeparator"
-                  aria-hidden="true"
+              return (
+                <div
+                  key={`first-${message.text}`}
+                  className="promotionalItem"
                 >
-                  •
-                </span>
-              </div>
-            );
-          }
-        )}
+                  <Icon
+                    size={18}
+                    strokeWidth={2.7}
+                    className="promotionalIcon"
+                  />
+
+                  <span className="promotionalText">
+                    {message.text}
+                  </span>
+
+                  <span
+                    className="promotionalSeparator"
+                    aria-hidden="true"
+                  >
+                    •
+                  </span>
+                </div>
+              );
+            }
+          )}
+        </div>
+
+        {/* ===============================================
+            SEGUNDA CÓPIA
+
+            Garante loop perfeitamente contínuo.
+        ================================================ */}
+
+        <div
+          className="promotionalGroup"
+          aria-hidden="true"
+        >
+          {messages.map(
+            (message) => {
+              const Icon =
+                message.icon;
+
+              return (
+                <div
+                  key={`second-${message.text}`}
+                  className="promotionalItem"
+                >
+                  <Icon
+                    size={18}
+                    strokeWidth={2.7}
+                    className="promotionalIcon"
+                  />
+
+                  <span className="promotionalText">
+                    {message.text}
+                  </span>
+
+                  <span
+                    className="promotionalSeparator"
+                    aria-hidden="true"
+                  >
+                    •
+                  </span>
+                </div>
+              );
+            }
+          )}
+        </div>
       </div>
 
       <style jsx>{`
         /* =====================================================
-           FAIXA PRINCIPAL
+           FAIXA
         ===================================================== */
 
         .promotionalBar {
@@ -111,51 +146,122 @@ export default function PromotionalBar() {
           );
 
           color: #ffffff;
+
+          /*
+           * Impede problemas de renderização
+           * em alguns navegadores mobile.
+           */
+          transform: translateZ(0);
+
+          -webkit-transform:
+            translateZ(0);
+
+          contain: paint;
         }
 
+
         /* =====================================================
-           TRILHO DA ANIMAÇÃO
+           TRILHO
         ===================================================== */
 
         .promotionalTrack {
           display: flex;
           align-items: center;
 
+          flex: none;
+
           width: max-content;
+          min-width: max-content;
           height: 100%;
 
           white-space: nowrap;
 
-          animation:
-            promotionalScroll
-            34s
-            linear
+          /*
+           * Animação.
+           */
+          animation-name:
+            promotionalScroll;
+
+          animation-duration:
+            34s;
+
+          animation-timing-function:
+            linear;
+
+          animation-iteration-count:
             infinite;
 
+          /*
+           * Ajuda Safari, iPhone e Android.
+           */
           will-change: transform;
+
+          transform:
+            translate3d(
+              0,
+              0,
+              0
+            );
+
+          -webkit-transform:
+            translate3d(
+              0,
+              0,
+              0
+            );
+
+          backface-visibility:
+            hidden;
+
+          -webkit-backface-visibility:
+            hidden;
         }
 
+
         /* =====================================================
-           CADA MENSAGEM
+           GRUPO
+
+           São duas cópias exatamente iguais.
+        ===================================================== */
+
+        .promotionalGroup {
+          display: flex;
+          align-items: center;
+
+          flex: none;
+
+          width: max-content;
+          height: 100%;
+        }
+
+
+        /* =====================================================
+           ITEM
         ===================================================== */
 
         .promotionalItem {
           display: flex;
           align-items: center;
-          flex-shrink: 0;
+
+          flex: none;
 
           height: 100%;
 
           gap: 9px;
 
-          padding: 0 30px;
+          padding:
+            0
+            30px;
         }
+
 
         /* =====================================================
            TEXTO
         ===================================================== */
 
         .promotionalText {
+          flex: none;
+
           color: #ffffff;
 
           font-size: 15px;
@@ -163,15 +269,15 @@ export default function PromotionalBar() {
 
           line-height: 1;
 
-          letter-spacing: 0.35px;
+          letter-spacing:
+            0.35px;
 
-          text-transform: uppercase;
+          text-transform:
+            uppercase;
 
-          /*
-           * Contorno escuro bem sutil.
-           * Dá contraste sem deixar o
-           * texto visualmente pesado.
-           */
+          white-space:
+            nowrap;
+
           -webkit-text-stroke:
             0.25px
             rgba(
@@ -198,18 +304,21 @@ export default function PromotionalBar() {
               );
         }
 
+
         /* =====================================================
-           ÍCONES
+           ÍCONE
         ===================================================== */
 
         .promotionalIcon {
-          flex-shrink: 0;
+          flex: none;
 
           color: #ffffff;
 
           filter:
             drop-shadow(
-              0 1px 0
+              0
+              1px
+              0
               rgba(
                 59,
                 38,
@@ -218,7 +327,9 @@ export default function PromotionalBar() {
               )
             )
             drop-shadow(
-              0 0 1px
+              0
+              0
+              1px
               rgba(
                 0,
                 0,
@@ -228,12 +339,16 @@ export default function PromotionalBar() {
             );
         }
 
+
         /* =====================================================
            SEPARADOR
         ===================================================== */
 
         .promotionalSeparator {
-          margin-left: 22px;
+          flex: none;
+
+          margin-left:
+            22px;
 
           color: #ffffff;
 
@@ -243,39 +358,64 @@ export default function PromotionalBar() {
           line-height: 1;
 
           text-shadow:
-            0 1px 1px
-              rgba(
-                59,
-                38,
-                6,
-                0.8
-              );
+            0
+            1px
+            1px
+            rgba(
+              59,
+              38,
+              6,
+              0.8
+            );
         }
+
 
         /* =====================================================
            ANIMAÇÃO
+
+           Move exatamente uma das duas cópias.
         ===================================================== */
 
         @keyframes promotionalScroll {
-          from {
+          0% {
             transform:
-              translateX(0);
+              translate3d(
+                0,
+                0,
+                0
+              );
           }
 
-          to {
+          100% {
             transform:
-              translateX(-50%);
+              translate3d(
+                -50%,
+                0,
+                0
+              );
           }
         }
 
-        /*
-         * Pausa ao passar o mouse.
-         */
-        .promotionalBar:hover
-          .promotionalTrack {
-          animation-play-state:
-            paused;
+
+        /* =====================================================
+           HOVER SOMENTE EM COMPUTADOR
+
+           Isso é importante.
+
+           Em celular/tablet, :hover pode ficar travado.
+        ===================================================== */
+
+        @media
+          (hover: hover) and
+          (pointer: fine) {
+
+          .promotionalBar:hover
+            .promotionalTrack {
+            animation-play-state:
+              paused;
+          }
         }
+
 
         /* =====================================================
            TABLET / CELULAR
@@ -291,15 +431,13 @@ export default function PromotionalBar() {
             gap: 7px;
 
             padding:
-              0 22px;
+              0
+              22px;
           }
 
           .promotionalText {
-            /*
-             * Continua grande mesmo
-             * no celular.
-             */
-            font-size: 13px;
+            font-size:
+              13px;
 
             letter-spacing:
               0.25px;
@@ -315,9 +453,11 @@ export default function PromotionalBar() {
           }
 
           .promotionalSeparator {
-            margin-left: 16px;
+            margin-left:
+              16px;
 
-            font-size: 15px;
+            font-size:
+              15px;
           }
 
           .promotionalTrack {
@@ -326,8 +466,9 @@ export default function PromotionalBar() {
           }
         }
 
+
         /* =====================================================
-           TELAS MUITO PEQUENAS
+           CELULARES PEQUENOS
         ===================================================== */
 
         @media (max-width: 420px) {
@@ -338,27 +479,21 @@ export default function PromotionalBar() {
 
           .promotionalItem {
             padding:
-              0 18px;
+              0
+              18px;
           }
 
           .promotionalText {
-            font-size: 12.5px;
+            font-size:
+              12.5px;
 
-            font-weight: 800;
+            font-weight:
+              800;
           }
-        }
 
-        /* =====================================================
-           ACESSIBILIDADE
-        ===================================================== */
-
-        @media (
-          prefers-reduced-motion:
-            reduce
-        ) {
           .promotionalTrack {
-            animation-play-state:
-              paused;
+            animation-duration:
+              27s;
           }
         }
       `}</style>
