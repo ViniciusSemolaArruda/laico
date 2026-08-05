@@ -17,6 +17,7 @@ import {
 type Banner = {
   id: number;
   image: string;
+  mobileImage?: string;
   alt: string;
   href?: string;
 };
@@ -24,23 +25,56 @@ type Banner = {
 const banners: Banner[] = [
   {
     id: 1,
+
+    /*
+     * DESKTOP
+     */
     image:
-      "/banners/banner-1.png",
-    alt: "Banner promocional Laico 1",
+      "/banners/banner-1.webp",
+
+    /*
+     * MOBILE
+     */
+    mobileImage:
+      "/banners/banner-1-mobile.webp",
+
+    alt: "Um presente de fé para quem sempre cuidou de você",
+
     href: "/produtos",
   },
+
   {
     id: 2,
+
     image:
-      "/banners/banner-2.png",
-    alt: "Banner promocional Laico 2",
+      "/banners/banner-2.webp",
+
+    /*
+    /*
+     * MOBILE
+     */
+    mobileImage:
+      "/banners/banner-2-mobile.webp",
+
+    alt: "Fé que transforma a casa em um lar",
+
     href: "/produtos",
   },
+
   {
     id: 3,
+
     image:
-      "/banners/banner-3.png",
-    alt: "Banner promocional Laico 3",
+      "/banners/banner-3.webp",
+
+    /*
+     * MOBILE
+     */
+    mobileImage:
+      "/banners/banner-3-mobile.webp",
+
+    alt: "Sua fé, sua história, Laico",
+
     href: "/produtos",
   },
 ];
@@ -154,6 +188,10 @@ export default function BannerCarousel() {
       touchStartX.current -
       touchEndX;
 
+    /*
+     * Evita trocar o banner
+     * por um toque muito pequeno.
+     */
     if (
       Math.abs(difference) <
       50
@@ -192,7 +230,7 @@ export default function BannerCarousel() {
       }
     >
       {/* ===============================================
-          JANELA DOS BANNERS
+          VIEWPORT
       =============================================== */}
 
       <div className="bannerViewport">
@@ -218,6 +256,53 @@ export default function BannerCarousel() {
                     }
                     className="bannerLink"
                   >
+                    <picture className="bannerPicture">
+                      {/* ===================================
+                          IMAGEM MOBILE
+                      =================================== */}
+
+                      {banner.mobileImage && (
+                        <source
+                          media="(max-width: 600px)"
+                          srcSet={
+                            banner.mobileImage
+                          }
+                        />
+                      )}
+
+                      {/* ===================================
+                          IMAGEM DESKTOP
+                      =================================== */}
+
+                      <img
+                        src={
+                          banner.image
+                        }
+                        alt={
+                          banner.alt
+                        }
+                        draggable={
+                          false
+                        }
+                        className={`bannerImage ${
+                          banner.mobileImage
+                            ? "hasMobileImage"
+                            : "desktopOnlyImage"
+                        }`}
+                      />
+                    </picture>
+                  </Link>
+                ) : (
+                  <picture className="bannerPicture">
+                    {banner.mobileImage && (
+                      <source
+                        media="(max-width: 600px)"
+                        srcSet={
+                          banner.mobileImage
+                        }
+                      />
+                    )}
+
                     <img
                       src={
                         banner.image
@@ -225,25 +310,16 @@ export default function BannerCarousel() {
                       alt={
                         banner.alt
                       }
-                      className="bannerImage"
                       draggable={
                         false
                       }
+                      className={`bannerImage ${
+                        banner.mobileImage
+                          ? "hasMobileImage"
+                          : "desktopOnlyImage"
+                      }`}
                     />
-                  </Link>
-                ) : (
-                  <img
-                    src={
-                      banner.image
-                    }
-                    alt={
-                      banner.alt
-                    }
-                    className="bannerImage"
-                    draggable={
-                      false
-                    }
-                  />
+                  </picture>
                 )}
               </div>
             )
@@ -334,11 +410,8 @@ export default function BannerCarousel() {
           width: 100%;
 
           /*
-           * Proporção oficial dos banners:
-           * 1920 x 500.
-           *
-           * Isso impede o banner de ficar
-           * gigante verticalmente.
+           * DESKTOP:
+           * banners 1920 × 500
            */
           aspect-ratio:
             1920 / 500;
@@ -417,6 +490,17 @@ export default function BannerCarousel() {
         }
 
         /* =====================================================
+           PICTURE
+        ===================================================== */
+
+        .bannerPicture {
+          display: block;
+
+          width: 100%;
+          height: 100%;
+        }
+
+        /* =====================================================
            IMAGEM
         ===================================================== */
 
@@ -426,16 +510,8 @@ export default function BannerCarousel() {
           width: 100%;
           height: 100%;
 
-          /*
-           * Preenche toda a área
-           * definida pelo carrossel.
-           */
           object-fit: cover;
 
-          /*
-           * Mantém o centro da imagem
-           * como ponto principal.
-           */
           object-position:
             center center;
 
@@ -497,7 +573,8 @@ export default function BannerCarousel() {
             blur(5px);
 
           transition:
-            color 200ms ease,
+            color
+              200ms ease,
             background
               200ms ease,
             transform
@@ -587,7 +664,7 @@ export default function BannerCarousel() {
               255,
               255,
               255,
-              0.55
+              0.58
             );
 
           cursor: pointer;
@@ -598,7 +675,7 @@ export default function BannerCarousel() {
               0,
               0,
               0,
-              0.16
+              0.18
             );
 
           transition:
@@ -628,23 +705,19 @@ export default function BannerCarousel() {
         }
 
         /* =====================================================
-           MONITORES MUITO GRANDES
+           MONITORES GRANDES
         ===================================================== */
 
         @media (
           min-width: 1920px
         ) {
-          /*
-           * Não deixa crescer verticalmente
-           * para sempre em monitores gigantes.
-           */
           .bannerCarousel {
             max-height: 500px;
           }
         }
 
         /* =====================================================
-           NOTEBOOK / TABLET
+           TABLETS / NOTEBOOKS
         ===================================================== */
 
         @media (
@@ -670,48 +743,139 @@ export default function BannerCarousel() {
         }
 
         /* =====================================================
-           CELULAR
+           MOBILE
         ===================================================== */
 
         @media (
           max-width: 600px
         ) {
+          /*
+           * Agora o carrossel realmente
+           * muda de formato no celular.
+           *
+           * Desktop = 1920 × 500
+           * Mobile  = 1080 × 1080
+           */
+          .bannerCarousel {
+            width: 100%;
+
+            aspect-ratio:
+              1 / 1;
+
+            max-height: none;
+
+            background:
+              #f5efe3;
+          }
+
+          /*
+           * Os banners que possuem uma
+           * imagem mobile usam cover.
+           */
+          .hasMobileImage {
+            object-fit: cover;
+
+            object-position:
+              center center;
+          }
+
+          /*
+           * Enquanto os banners 2 e 3
+           * ainda não possuem versão
+           * mobile, mostramos a imagem
+           * inteira sem cortar.
+           *
+           * Quando criarmos as versões
+           * mobile deles, esta regra
+           * deixa de ser usada nesses
+           * banners.
+           */
+          .desktopOnlyImage {
+            object-fit: contain;
+
+            object-position:
+              center center;
+          }
+
+          /* =============================================
+             SETAS MOBILE
+          ============================================= */
+
           .arrow {
-            width: 30px;
-            height: 38px;
+            width: 34px;
+            height: 46px;
+
+            color: #916b1c;
 
             background:
               rgba(
                 255,
                 255,
                 255,
-                0.85
+                0.9
+              );
+
+            box-shadow:
+              0 2px 10px
+              rgba(
+                0,
+                0,
+                0,
+                0.12
               );
           }
 
           .arrowLeft {
+            left: 0;
+
             border-radius:
-              0 10px 10px 0;
+              0 12px 12px 0;
           }
 
           .arrowRight {
+            right: 0;
+
             border-radius:
-              10px 0 0 10px;
+              12px 0 0 12px;
           }
 
-          .indicators {
-            bottom: 6px;
+          /* =============================================
+             INDICADORES MOBILE
+          ============================================= */
 
-            gap: 5px;
+          .indicators {
+            bottom: 10px;
+
+            gap: 6px;
           }
 
           .indicator {
-            width: 22px;
-            height: 3px;
+            width: 24px;
+            height: 4px;
+
+            background:
+              rgba(
+                255,
+                255,
+                255,
+                0.65
+              );
+
+            box-shadow:
+              0 1px 4px
+              rgba(
+                0,
+                0,
+                0,
+                0.25
+              );
           }
 
           .indicatorActive {
-            width: 30px;
+            width: 34px;
+
+            background:
+              #ffffff;
           }
         }
 
@@ -723,20 +887,23 @@ export default function BannerCarousel() {
           max-width: 380px
         ) {
           .arrow {
-            width: 27px;
-            height: 34px;
+            width: 30px;
+            height: 42px;
           }
 
           .indicators {
-            bottom: 5px;
+            bottom: 8px;
+
+            gap: 5px;
           }
 
           .indicator {
-            width: 18px;
+            width: 20px;
+            height: 3px;
           }
 
           .indicatorActive {
-            width: 25px;
+            width: 28px;
           }
         }
 
