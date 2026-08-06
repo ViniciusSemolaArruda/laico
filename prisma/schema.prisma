@@ -18,6 +18,27 @@ enum AccountStatus {
   DISABLED
 }
 
+enum AdminModule {
+  DASHBOARD
+  PRODUCTS
+  ORDERS
+  CUSTOMERS
+  CATEGORIES
+  BANNERS
+  COUPONS
+  FINANCE
+  REPORTS
+  SETTINGS
+  EMPLOYEES
+}
+
+enum PermissionLevel {
+  NONE
+  VIEW
+  EDIT
+  MANAGE
+}
+
 enum OrderStatus {
   PENDING
   PAID
@@ -66,11 +87,19 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
 
+  adminProfile         AdminProfile?  @relation("AdminProfileUser")
+  createdAdminProfiles AdminProfile[] @relation("AdminProfileCreatedBy")
+
+  adminPermissions AdminPermission[]
+  adminSessions    AdminSession[]
+  adminAuditLogs   AdminAuditLog[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([accountStatus])
   @@index([emailVerifiedAt])
+  @@index([role])
 }
 
 model CustomerSession {
@@ -138,25 +167,242 @@ model LoginRateLimit {
   @@index([blockedUntil])
 }
 
+/**
+ * =========================================================
+ * ADMIN / FUNCIONÁRIOS
+ * =========================================================
+ */
+
+model AdminProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  jobTitle String
+
+  active       Boolean @default(true)
+  isSuperAdmin Boolean @default(false)
+
+  /**
+   * Funcionário removido do painel.
+   * Não apagamos fisicamente porque precisamos
+   * preservar o histórico de auditoria.
+   */
+  removedAt DateTime?
+
+  createdById String?
+
+  user      User  @relation("AdminProfileUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("AdminProfileCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([isSuperAdmin])
+  @@index([removedAt])
+  @@index([createdById])
+}
+
+model AdminPermission {
+  id     String @id @default(cuid())
+  userId String
+
+  module AdminModule
+  level  PermissionLevel @default(NONE)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, module])
+  @@index([userId])
+  @@index([module])
+  @@index([level])
+}
+
+model AdminSession {
+  id        String @id @default(cuid())
+  userId    String
+  tokenHash String @unique
+
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model AdminAuditLog {
+  id String @id @default(cuid())
+
+  actorId String?
+
+  module AdminModule
+  action String
+
+  entityType String
+  entityId   String?
+
+  changes Json?
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([module])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+/**
+ * =========================================================
+ * CATEGORIAS
+ * =========================================================
+ */
+
+model Category {
+  id   String @id @default(cuid())
+  name String
+  slug String @unique
+
+  description String?
+  image       String?
+
+  active     Boolean   @default(true)
+  sortOrder  Int       @default(0)
+  archivedAt DateTime?
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([archivedAt])
+  @@index([sortOrder])
+}
+
+/**
+ * =========================================================
+ * PRODUTOS
+ * =========================================================
+ */
+
 model Product {
-  id          String  @id @default(cuid())
-  name        String
-  slug        String  @unique
-  description String
-  price       Decimal @db.Decimal(10, 2)
-  image       String
-  religion    String
-  category    String
-  stock       Int
-  featured    Boolean @default(false)
-  active      Boolean @default(true)
+  id String @id @default(cuid())
+
+  name String
+  slug String  @unique
+  sku  String? @unique
+
+  shortDescription String?
+  description      String
+
+  price     Decimal  @db.Decimal(10, 2)
+  salePrice Decimal? @db.Decimal(10, 2)
+  cost      Decimal? @db.Decimal(10, 2)
+
+  /**
+   * Mantemos o campo antigo durante
+   * a migração da galeria.
+   */
+  image String
+
+  /**
+   * Mantemos para compatibilidade
+   * com o site atual.
+   */
+  religion String
+  category String
+
+  /**
+   * Nova categoria relacional.
+   */
+  categoryId  String?
+  categoryRef Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  stock        Int
+  minimumStock Int @default(0)
+
+  /**
+   * Peso em KG.
+   * Dimensões em CM.
+   */
+  weight Decimal? @db.Decimal(10, 3)
+  height Decimal? @db.Decimal(10, 2)
+  width  Decimal? @db.Decimal(10, 2)
+  length Decimal? @db.Decimal(10, 2)
+
+  featured Boolean @default(false)
+  active   Boolean @default(true)
+
+  /**
+   * Produto não é apagado.
+   */
+  archivedAt DateTime?
+
+  seoTitle       String?
+  seoDescription String?
+
+  images ProductImage[]
 
   cartItems  CartItem[]
   orderItems OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([category])
+  @@index([religion])
+  @@index([active])
+  @@index([featured])
+  @@index([archivedAt])
+  @@index([stock])
+  @@index([createdAt])
 }
+
+/**
+ * =========================================================
+ * IMAGENS DOS PRODUTOS
+ * =========================================================
+ */
+
+model ProductImage {
+  id        String @id @default(cuid())
+  productId String
+
+  url String
+  alt String?
+
+  position  Int     @default(0)
+  isPrimary Boolean @default(false)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, position])
+  @@index([productId])
+  @@index([productId, isPrimary])
+}
+
+/**
+ * =========================================================
+ * CARRINHO
+ * =========================================================
+ */
 
 model CartItem {
   id        String @id @default(cuid())
@@ -172,6 +418,12 @@ model CartItem {
 
   @@unique([userId, productId])
 }
+
+/**
+ * =========================================================
+ * ENDEREÇOS
+ * =========================================================
+ */
 
 model Address {
   id           String    @id @default(cuid())
@@ -197,6 +449,12 @@ model Address {
   @@index([userId, archivedAt])
   @@index([userId, isDefault])
 }
+
+/**
+ * =========================================================
+ * PEDIDOS
+ * =========================================================
+ */
 
 model Order {
   id        String      @id @default(cuid())
@@ -231,11 +489,22 @@ model Order {
   @@index([createdAt])
 }
 
+/**
+ * =========================================================
+ * ITENS DO PEDIDO
+ * =========================================================
+ */
+
 model OrderItem {
   id        String @id @default(cuid())
   orderId   String
   productId String
 
+  /**
+   * Snapshot do produto.
+   * Mesmo que o produto seja alterado depois,
+   * estes dados continuam preservados.
+   */
   name     String
   image    String
   price    Decimal @db.Decimal(10, 2)
@@ -249,6 +518,12 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
 }
+
+/**
+ * =========================================================
+ * PAGAMENTOS
+ * =========================================================
+ */
 
 model Payment {
   id       String        @id @default(cuid())
@@ -271,6 +546,12 @@ model Payment {
   @@index([mercadoPagoPreferenceId])
 }
 
+/**
+ * =========================================================
+ * HISTÓRICO DOS PEDIDOS
+ * =========================================================
+ */
+
 model OrderStatusHistory {
   id      String      @id @default(cuid())
   orderId String
@@ -285,6 +566,12 @@ model OrderStatusHistory {
   @@index([orderId])
   @@index([createdAt])
 }
+
+/**
+ * =========================================================
+ * ACESSO DO VISITANTE AO PEDIDO
+ * =========================================================
+ */
 
 model OrderAccessToken {
   id        String               @id @default(cuid())
