@@ -1,6 +1,16 @@
 import AdminShell from "@/app/components/admin/AdminShell";
 import CancelExpiredOrdersButton from "@/app/components/admin/CancelExpiredOrdersButton";
+
+import { redirect } from "next/navigation";
+
+import {
+  requireAdminPermission,
+} from "@/lib/admin-auth";
+
 import { prisma } from "@/lib/prisma";
+
+export const dynamic =
+  "force-dynamic";
 
 type AdminOrder = {
   id: string;
@@ -54,22 +64,31 @@ function getOrderStatusLabel(
   switch (status) {
     case "PENDING":
       return "Aguardando pagamento";
+
     case "PAID":
       return "Pago";
+
     case "PROCESSING":
       return "Em preparação";
+
     case "SHIPPED":
       return "Enviado";
+
     case "OUT_FOR_DELIVERY":
       return "Saiu para entrega";
+
     case "DELIVERED":
       return "Entregue";
+
     case "CANCELED":
       return "Cancelado";
+
     case "REFUNDED":
       return "Reembolsado";
+
     case "RETURNED":
       return "Devolvido";
+
     default:
       return status;
   }
@@ -81,20 +100,28 @@ function getOrderStatusStyle(
   switch (status) {
     case "PAID":
       return "bg-green-100 text-green-700";
+
     case "PROCESSING":
       return "bg-blue-100 text-blue-700";
+
     case "SHIPPED":
       return "bg-purple-100 text-purple-700";
+
     case "OUT_FOR_DELIVERY":
       return "bg-indigo-100 text-indigo-700";
+
     case "DELIVERED":
       return "bg-emerald-100 text-emerald-700";
+
     case "CANCELED":
       return "bg-red-100 text-red-700";
+
     case "REFUNDED":
       return "bg-purple-100 text-purple-700";
+
     case "RETURNED":
       return "bg-orange-100 text-orange-700";
+
     default:
       return "bg-[#fff8e8] text-[#b98218]";
   }
@@ -106,12 +133,16 @@ function getPaymentStatusLabel(
   switch (status) {
     case "APPROVED":
       return "Aprovado";
+
     case "REJECTED":
       return "Recusado";
+
     case "CANCELED":
       return "Cancelado";
+
     case "REFUNDED":
       return "Reembolsado";
+
     default:
       return "Pendente";
   }
@@ -123,17 +154,69 @@ function getPaymentStatusStyle(
   switch (status) {
     case "APPROVED":
       return "bg-green-100 text-green-700";
+
     case "REJECTED":
     case "CANCELED":
       return "bg-red-100 text-red-700";
+
     case "REFUNDED":
       return "bg-purple-100 text-purple-700";
+
     default:
       return "bg-blue-100 text-blue-700";
   }
 }
 
 export default async function AdminOrdersPage() {
+  /*
+   * =====================================================
+   * AUTORIZAÇÃO
+   * =====================================================
+   *
+   * Esta página contém informações privadas dos
+   * compradores.
+   *
+   * A autorização acontece ANTES de qualquer consulta
+   * aos pedidos ou dados pessoais.
+   */
+
+  try {
+    await requireAdminPermission(
+      "ORDERS",
+      "VIEW"
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message ===
+        "ADMIN_UNAUTHORIZED"
+    ) {
+      redirect(
+        "/admin/login"
+      );
+    }
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "ADMIN_FORBIDDEN"
+    ) {
+      redirect(
+        "/admin/acesso-negado?redirect=/admin/pedidos"
+      );
+    }
+
+    throw error;
+  }
+
+  /*
+   * =====================================================
+   * PEDIDOS
+   * =====================================================
+   *
+   * Só chegamos aqui depois da autorização.
+   */
+
   const orders: AdminOrder[] =
     await prisma.order.findMany({
       select: {
@@ -163,7 +246,8 @@ export default async function AdminOrdersPage() {
       },
 
       orderBy: {
-        createdAt: "desc",
+        createdAt:
+          "desc",
       },
     });
 
@@ -180,7 +264,8 @@ export default async function AdminOrdersPage() {
   const paidOrders =
     orders.filter(
       (order) =>
-        order.status === "PAID"
+        order.status ===
+        "PAID"
     ).length;
 
   const canceledOrders =
@@ -208,6 +293,15 @@ export default async function AdminOrdersPage() {
           </p>
         </div>
 
+        {/*
+         * A API deste botão já exige
+         * ORDERS / MANAGE.
+         *
+         * Portanto, mesmo que alguém manipule
+         * o navegador, não consegue executar
+         * a operação sem autorização.
+         */}
+
         <CancelExpiredOrdersButton />
       </div>
 
@@ -216,44 +310,60 @@ export default async function AdminOrdersPage() {
           {
             label:
               "Total de pedidos",
-            value: totalOrders,
+            value:
+              totalOrders,
             color:
               "border-t-[#20170f]",
           },
+
           {
             label:
               "Aguardando pagamento",
-            value: pendingOrders,
+            value:
+              pendingOrders,
             color:
               "border-t-[#b98218]",
           },
+
           {
-            label: "Pagos",
-            value: paidOrders,
+            label:
+              "Pagos",
+            value:
+              paidOrders,
             color:
               "border-t-green-600",
           },
+
           {
-            label: "Cancelados",
+            label:
+              "Cancelados",
             value:
               canceledOrders,
             color:
               "border-t-red-600",
           },
-        ].map((card) => (
-          <section
-            key={card.label}
-            className={`rounded-2xl border border-[#e8dcc2] border-t-4 ${card.color} bg-white p-5 shadow-sm`}
-          >
-            <p className="text-sm text-neutral-500">
-              {card.label}
-            </p>
+        ].map(
+          (card) => (
+            <section
+              key={
+                card.label
+              }
+              className={`rounded-2xl border border-[#e8dcc2] border-t-4 ${card.color} bg-white p-5 shadow-sm`}
+            >
+              <p className="text-sm text-neutral-500">
+                {
+                  card.label
+                }
+              </p>
 
-            <strong className="mt-2 block text-[30px] text-[#20170f]">
-              {card.value}
-            </strong>
-          </section>
-        ))}
+              <strong className="mt-2 block text-[30px] text-[#20170f]">
+                {
+                  card.value
+                }
+              </strong>
+            </section>
+          )
+        )}
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-[#e8dcc2] bg-white shadow-sm">
@@ -270,21 +380,27 @@ export default async function AdminOrdersPage() {
                 <th className="p-4 text-left">
                   Pedido
                 </th>
+
                 <th className="p-4 text-left">
                   Cliente
                 </th>
+
                 <th className="p-4 text-left">
                   Itens
                 </th>
+
                 <th className="p-4 text-left">
                   Total
                 </th>
+
                 <th className="p-4 text-left">
                   Status
                 </th>
+
                 <th className="p-4 text-left">
                   Pagamento
                 </th>
+
                 <th className="p-4 text-left">
                   Criado em
                 </th>
@@ -301,7 +417,9 @@ export default async function AdminOrdersPage() {
 
                   return (
                     <tr
-                      key={order.id}
+                      key={
+                        order.id
+                      }
                       className="border-t border-[#eee2cc] transition hover:bg-[#faf9f6]"
                     >
                       <td className="p-4">
@@ -389,7 +507,9 @@ export default async function AdminOrdersPage() {
                 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={
+                      7
+                    }
                     className="p-10 text-center text-neutral-500"
                   >
                     Nenhum pedido

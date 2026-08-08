@@ -64,6 +64,21 @@ enum OrderAccessTokenType {
   EMAIL_LINK
 }
 
+/**
+ * Tipos de movimentação manual de estoque.
+ */
+enum StockMovementType {
+  ENTRY
+  EXIT
+  ADJUSTMENT
+}
+
+/**
+ * =========================================================
+ * USUÁRIOS
+ * =========================================================
+ */
+
 model User {
   id       String   @id @default(cuid())
   name     String
@@ -90,9 +105,12 @@ model User {
   adminProfile         AdminProfile?  @relation("AdminProfileUser")
   createdAdminProfiles AdminProfile[] @relation("AdminProfileCreatedBy")
 
-  adminPermissions AdminPermission[]
-  adminSessions    AdminSession[]
-  adminAuditLogs   AdminAuditLog[]
+  adminPermissions         AdminPermission[]
+  adminSessions            AdminSession[]
+  adminAuditLogs           AdminAuditLog[]
+  adminTwoFactorChallenges AdminTwoFactorChallenge[]
+
+  productStockMovements ProductStockMovement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -241,6 +259,34 @@ model AdminSession {
   @@index([revokedAt])
 }
 
+/**
+ * =========================================================
+ * SEGUNDO FATOR DO ADMINISTRADOR
+ * =========================================================
+ */
+
+model AdminTwoFactorChallenge {
+  id     String @id @default(cuid())
+  userId String
+
+  tokenHash String @unique
+  codeHash  String
+
+  attempts Int @default(0)
+
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, usedAt])
+  @@index([expiresAt])
+  @@index([usedAt])
+}
+
 model AdminAuditLog {
   id String @id @default(cuid())
 
@@ -313,21 +359,22 @@ model Product {
   cost      Decimal? @db.Decimal(10, 2)
 
   /**
-   * Mantemos o campo antigo durante
-   * a migração da galeria.
+   * Mantido por compatibilidade com a loja atual.
    */
   image String
 
   /**
-   * Mantemos para compatibilidade
-   * com o site atual.
+   * Mantido por compatibilidade.
    */
   religion String
-  category String
 
   /**
-   * Nova categoria relacional.
+   * Um produto pode pertencer a uma ou mais religiões.
    */
+  religions String[] @default([])
+
+  category String
+
   categoryId  String?
   categoryRef Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
@@ -347,14 +394,15 @@ model Product {
   active   Boolean @default(true)
 
   /**
-   * Produto não é apagado.
+   * Produto não é apagado fisicamente.
    */
   archivedAt DateTime?
 
   seoTitle       String?
   seoDescription String?
 
-  images ProductImage[]
+  images         ProductImage[]
+  stockMovements ProductStockMovement[]
 
   cartItems  CartItem[]
   orderItems OrderItem[]
@@ -382,8 +430,9 @@ model ProductImage {
   id        String @id @default(cuid())
   productId String
 
-  url String
-  alt String?
+  url      String
+  publicId String? @unique
+  alt      String?
 
   position  Int     @default(0)
   isPrimary Boolean @default(false)
@@ -396,6 +445,65 @@ model ProductImage {
   @@unique([productId, position])
   @@index([productId])
   @@index([productId, isPrimary])
+}
+
+/**
+ * =========================================================
+ * MOVIMENTAÇÕES DE ESTOQUE
+ * =========================================================
+ * Histórico permanente das alterações manuais de estoque.
+ * ENTRY:
+ * entrada de mercadoria.
+ * EXIT:
+ * saída manual.
+ * ADJUSTMENT:
+ * correção do estoque após inventário/conferência.
+ */
+
+model ProductStockMovement {
+  id String @id @default(cuid())
+
+  productId String
+  actorId   String
+
+  type StockMovementType
+
+  /**
+   * Sempre um número positivo.
+   * ENTRY/EXIT representam quantidade movimentada.
+   * ADJUSTMENT representa a diferença absoluta entre
+   * o estoque anterior e o novo estoque.
+   */
+  quantity Int
+
+  previousStock Int
+  newStock      Int
+
+  /**
+   * Motivo obrigatório informado pelo funcionário.
+   */
+  reason String
+
+  /**
+   * Observação adicional opcional.
+   */
+  note String?
+
+  /**
+   * Restrict é intencional:
+   * produtos e funcionários ligados a um histórico
+   * de estoque não devem ser apagados fisicamente.
+   */
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  actor   User    @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([actorId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([productId, createdAt])
 }
 
 /**
@@ -502,8 +610,6 @@ model OrderItem {
 
   /**
    * Snapshot do produto.
-   * Mesmo que o produto seja alterado depois,
-   * estes dados continuam preservados.
    */
   name     String
   image    String
@@ -578,6 +684,7 @@ model OrderAccessToken {
   orderId   String
   tokenHash String               @unique
   type      OrderAccessTokenType @default(GUEST)
+
   expiresAt DateTime
   revokedAt DateTime?
 

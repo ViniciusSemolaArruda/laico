@@ -470,6 +470,47 @@ export async function POST(
               usedAt: now,
             },
           });
+
+          /*
+           * =================================================
+           * REVOGA ACESSO DE VISITANTE DOS PEDIDOS
+           * =================================================
+           *
+           * A partir deste momento o cliente comprovou que
+           * controla o endereço de e-mail e a conta passou
+           * para ACTIVE.
+           *
+           * Por isso os antigos tokens GUEST dos pedidos
+           * desse usuário deixam de ser uma segunda chave de
+           * acesso. O cliente autenticado continuará acessando
+           * os próprios pedidos por CustomerSession + userId.
+           *
+           * O cookie antigo pode continuar fisicamente no
+           * navegador até expirar, mas deixa de funcionar
+           * imediatamente porque verifyOrderAccessToken()
+           * rejeita tokens cujo revokedAt não seja nulo.
+           */
+          await transaction.orderAccessToken.updateMany({
+            where: {
+              type:
+                "GUEST",
+
+              revokedAt:
+                null,
+
+              order: {
+                is: {
+                  userId:
+                    verification.userId,
+                },
+              },
+            },
+
+            data: {
+              revokedAt:
+                now,
+            },
+          });
         }
       );
     } catch {

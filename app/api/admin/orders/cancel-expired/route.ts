@@ -1,21 +1,56 @@
 import { NextResponse } from "next/server";
 
-import { getAdminSession } from "@/lib/admin-auth";
+import { requireAdminPermission } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
 
 type ExpiredOrder = {
   id: string;
-  expiresAt: Date | null;
-  createdAt: Date;
 
   payment: {
     status: string;
   } | null;
+
+  items: Array<{
+    productId: string;
+    quantity: number;
+  }>;
 };
 
-function isRecordNotFoundError(
-  error: unknown
+const ACCESS_DENIED_MESSAGE =
+  "Você não tem permissão para fazer isso! Acesso negado.";
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
 ) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control":
+        "private, no-store, no-cache, must-revalidate",
+      Pragma: "no-cache",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
+function isAllowedOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    return origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
+}
+
+function isRecordNotFoundError(error: unknown) {
   if (
     typeof error !== "object" ||
     error === null ||
@@ -27,34 +62,62 @@ function isRecordNotFoundError(
   return error.code === "P2025";
 }
 
-export async function POST() {
-  const session =
-    await getAdminSession();
+function getAuthorizationResponse(error: unknown) {
+  if (!(error instanceof Error)) {
+    return null;
+  }
 
-  if (!session) {
-    return NextResponse.json(
+  if (error.message === "ADMIN_UNAUTHORIZED") {
+    return jsonResponse(
       {
-        error:
-  "Você não tem permissão para fazer isso! Acesso negado.",
+        error: ACCESS_DENIED_MESSAGE,
       },
-      {
-        status: 401,
-      }
+      401
     );
   }
 
+  if (error.message === "ADMIN_FORBIDDEN") {
+    return jsonResponse(
+      {
+        error: ACCESS_DENIED_MESSAGE,
+      },
+      403
+    );
+  }
+
+  return null;
+}
+
+export async function POST(request: Request) {
   try {
+    /*
+     * É uma operação administrativa que altera vários
+     * pedidos e estoque. Portanto exige ORDERS / MANAGE.
+     */
+    if (!isAllowedOrigin(request)) {
+      return jsonResponse(
+        {
+          error: ACCESS_DENIED_MESSAGE,
+        },
+        403
+      );
+    }
+
+    const session =
+      await requireAdminPermission(
+        "ORDERS",
+        "MANAGE"
+      );
+
     const now = new Date();
 
     /*
-     * Pedido sem pagamento iniciado:
-     * expira 30 minutos depois da criação.
+     * Checkout abandonado sem pagamento iniciado:
+     * expira 30 minutos após a criação.
      */
-    const abandonedLimit =
-      new Date(
-        Date.now() -
-          30 * 60 * 1000
-      );
+    const abandonedLimit = new Date(
+      Date.now() - 30 * 60 * 1000
+    );
 
     const expiredOrders: ExpiredOrder[] =
       await prisma.order.findMany({
@@ -62,27 +125,16 @@ export async function POST() {
           status: "PENDING",
 
           OR: [
-            /*
-             * Pix, boleto ou outra forma de
-             * pagamento com prazo definido.
-             */
             {
               expiresAt: {
                 lt: now,
               },
             },
-
-            /*
-             * Checkout abandonado antes da
-             * criação do pagamento.
-             */
             {
               expiresAt: null,
-
               createdAt: {
                 lt: abandonedLimit,
               },
-
               payment: {
                 is: null,
               },
@@ -92,12 +144,17 @@ export async function POST() {
 
         select: {
           id: true,
-          expiresAt: true,
-          createdAt: true,
 
           payment: {
             select: {
               status: true,
+            },
+          },
+
+          items: {
+            select: {
+              productId: true,
+              quantity: true,
             },
           },
         },
@@ -107,87 +164,103 @@ export async function POST() {
     let ignoredCount = 0;
     let failedCount = 0;
 
-    for (
-      const order of
-      expiredOrders
-    ) {
-      /*
-       * Nunca cancela um pagamento que já
-       * esteja aprovado.
-       */
-      if (
-        order.payment?.status ===
-        "APPROVED"
-      ) {
+    for (const order of expiredOrders) {
+      if (order.payment?.status === "APPROVED") {
         ignoredCount += 1;
         continue;
       }
 
       try {
-        /*
-         * O update do pedido, pagamento e
-         * histórico acontece em uma única
-         * operação atômica do Prisma.
-         *
-         * A condição status: PENDING impede
-         * cancelar um pedido alterado por outro
-         * processo enquanto esta rota executa.
-         */
-        await prisma.order.update({
-          where: {
-            id: order.id,
-            status: "PENDING",
-          },
-
-          data: {
-            status:
-              "CANCELED",
-
-            payment: order.payment
-              ? {
-                  update: {
-                    where: {
-                      status: {
-                        not:
-                          "APPROVED",
-                      },
-                    },
-
-                    data: {
-                      status:
-                        "CANCELED",
-                    },
-                  },
-                }
-              : undefined,
-
-            history: {
-              create: {
-                status:
-                  "CANCELED",
-
-                title:
-                  "Pedido cancelado",
-
-                message:
-                  "O prazo para pagamento expirou e o pedido foi cancelado automaticamente.",
+        await prisma.$transaction(
+          async (transaction) => {
+            /*
+             * O status PENDING impede sobrescrever uma
+             * alteração concorrente. Se existir pagamento,
+             * o update condicional também impede cancelar
+             * um pagamento que se tornou APPROVED.
+             */
+            await transaction.order.update({
+              where: {
+                id: order.id,
+                status: "PENDING",
               },
-            },
-          },
-        });
+
+              data: {
+                status: "CANCELED",
+
+                payment: order.payment
+                  ? {
+                      update: {
+                        where: {
+                          status: {
+                            not: "APPROVED",
+                          },
+                        },
+                        data: {
+                          status: "CANCELED",
+                        },
+                      },
+                    }
+                  : undefined,
+
+                history: {
+                  create: {
+                    status: "CANCELED",
+                    title: "Pedido cancelado",
+                    message:
+                      "O prazo para pagamento expirou e o pedido foi cancelado automaticamente.",
+                  },
+                },
+              },
+            });
+
+            /*
+             * O checkout já desconta/reserva o estoque ao
+             * criar o pedido. Um pedido cancelado devolve as
+             * unidades dentro da MESMA transação.
+             */
+            for (const item of order.items) {
+              await transaction.product.update({
+                where: {
+                  id: item.productId,
+                },
+                data: {
+                  stock: {
+                    increment: item.quantity,
+                  },
+                },
+              });
+            }
+
+            /*
+             * Não registramos CPF, e-mail, endereço,
+             * cookies, tokens ou credenciais na auditoria.
+             */
+            await transaction.adminAuditLog.create({
+              data: {
+                actorId: session.userId,
+                module: "ORDERS",
+                action: "ORDER_EXPIRED_CANCELED",
+                entityType: "ORDER",
+                entityId: order.id,
+                changes: {
+                  previousStatus: "PENDING",
+                  nextStatus: "CANCELED",
+                  reason: "PAYMENT_EXPIRED",
+                },
+              },
+            });
+          }
+        );
 
         canceledCount += 1;
       } catch (error) {
         /*
-         * P2025 pode acontecer quando o pedido
-         * foi pago ou atualizado por outro
-         * processo entre a busca e o update.
+         * P2025 é esperado se webhook/outro processo
+         * alterar o pedido ou pagamento simultaneamente.
+         * A transação inteira é revertida, inclusive estoque.
          */
-        if (
-          isRecordNotFoundError(
-            error
-          )
-        ) {
+        if (isRecordNotFoundError(error)) {
           ignoredCount += 1;
           continue;
         }
@@ -195,47 +268,46 @@ export async function POST() {
         failedCount += 1;
 
         console.error(
-          `Erro ao cancelar o pedido ${order.id}:`,
-          error
+          "Falha ao cancelar um pedido expirado:",
+          error instanceof Error
+            ? error.name
+            : "UnknownError"
         );
       }
     }
 
-    return NextResponse.json({
-      success:
-        failedCount === 0,
-
-      found:
-        expiredOrders.length,
-
-      canceled:
-        canceledCount,
-
-      ignored:
-        ignoredCount,
-
-      failed:
-        failedCount,
-
+    return jsonResponse({
+      success: failedCount === 0,
+      found: expiredOrders.length,
+      canceled: canceledCount,
+      ignored: ignoredCount,
+      failed: failedCount,
       message:
         failedCount > 0
           ? `${canceledCount} pedido(s) cancelado(s) e ${failedCount} pedido(s) com erro.`
           : `${canceledCount} pedido(s) expirado(s) cancelado(s).`,
     });
   } catch (error) {
+    const authorizationResponse =
+      getAuthorizationResponse(error);
+
+    if (authorizationResponse) {
+      return authorizationResponse;
+    }
+
     console.error(
       "Erro ao cancelar pedidos expirados:",
-      error
+      error instanceof Error
+        ? error.name
+        : "UnknownError"
     );
 
-    return NextResponse.json(
+    return jsonResponse(
       {
         error:
           "Erro interno ao cancelar pedidos expirados.",
       },
-      {
-        status: 500,
-      }
+      500
     );
   }
 }

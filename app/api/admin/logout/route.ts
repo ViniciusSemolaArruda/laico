@@ -9,57 +9,38 @@ import {
 import {
   ADMIN_SESSION_COOKIE_NAME,
   getAdminSession,
+  revokeAllAdminSessions,
   revokeCurrentAdminSession,
 } from "@/lib/admin-auth";
 
 export const dynamic =
   "force-dynamic";
 
-/*
- * =========================================================
- * JSON
- * =========================================================
- */
-
 function jsonResponse(
-  body: Record<
-    string,
-    unknown
-  >,
+  body: Record<string, unknown>,
   status = 200
 ) {
-  return NextResponse.json(
-    body,
-    {
-      status,
+  return NextResponse.json(body, {
+    status,
 
-      headers: {
-        "Cache-Control":
-          "private, no-store, no-cache, must-revalidate",
+    headers: {
+      "Cache-Control":
+        "private, no-store, no-cache, must-revalidate",
 
-        Pragma:
-          "no-cache",
+      Pragma:
+        "no-cache",
 
-        "X-Content-Type-Options":
-          "nosniff",
-      },
-    }
-  );
+      "X-Content-Type-Options":
+        "nosniff",
+    },
+  });
 }
-
-/*
- * =========================================================
- * ORIGEM
- * =========================================================
- */
 
 function isAllowedOrigin(
   request: Request
 ) {
   const origin =
-    request.headers.get(
-      "origin"
-    );
+    request.headers.get("origin");
 
   if (!origin) {
     return true;
@@ -68,34 +49,23 @@ function isAllowedOrigin(
   try {
     return (
       origin ===
-      new URL(
-        request.url
-      ).origin
+      new URL(request.url).origin
     );
   } catch {
     return false;
   }
 }
 
-/*
- * =========================================================
- * APAGAR COOKIE
- * =========================================================
- */
-
 function clearAdminCookie(
-  response:
-    NextResponse
+  response: NextResponse
 ) {
   response.cookies.set({
     name:
       ADMIN_SESSION_COOKIE_NAME,
 
-    value:
-      "",
+    value: "",
 
-    httpOnly:
-      true,
+    httpOnly: true,
 
     secure:
       process.env.NODE_ENV ===
@@ -104,12 +74,9 @@ function clearAdminCookie(
     sameSite:
       "strict",
 
-    path:
-      "/",
+    path: "/",
 
-    maxAge:
-      0,
-
+    maxAge: 0,
     expires:
       new Date(0),
   });
@@ -117,25 +84,73 @@ function clearAdminCookie(
   return response;
 }
 
+async function registerLogoutAudit({
+  userId,
+  jobTitle,
+  scope,
+}: {
+  userId: string;
+  jobTitle: string;
+  scope:
+    | "CURRENT_SESSION"
+    | "ALL_SESSIONS";
+}) {
+  try {
+    await createAdminAuditLog({
+      actorId:
+        userId,
+
+      module:
+        "DASHBOARD",
+
+      action:
+        "ADMIN_LOGOUT",
+
+      entityType:
+        "ADMIN_USER",
+
+      entityId:
+        userId,
+
+      changes: {
+        event:
+          scope === "ALL_SESSIONS"
+            ? "LOGOUT_ALL_DEVICES"
+            : "LOGOUT",
+
+        scope,
+
+        jobTitle,
+      },
+    });
+  } catch (
+    auditError
+  ) {
+    /*
+     * Auditoria não pode impedir o logout.
+     * Não imprimimos sessão, cookie ou token.
+     */
+    console.error(
+      "Falha ao registrar auditoria do logout administrativo:",
+      auditError instanceof Error
+        ? auditError.name
+        : "UnknownError"
+    );
+  }
+}
+
 /*
  * =========================================================
- * LOGOUT
+ * POST
  * =========================================================
+ *
+ * Logout somente deste dispositivo.
  */
-
 export async function POST(
   request: Request
 ) {
-  /*
-   * =======================================================
-   * ORIGEM
-   * =======================================================
-   */
-
   if (
-    !isAllowedOrigin(
-      request
-    )
+    !isAllowedOrigin(request)
   ) {
     return jsonResponse(
       {
@@ -146,94 +161,27 @@ export async function POST(
     );
   }
 
-  /*
-   * =======================================================
-   * SESSÃO ATUAL
-   * =======================================================
-   *
-   * Precisamos descobrir quem está saindo
-   * ANTES de revogar a sessão.
-   */
-
   const session =
     await getAdminSession();
 
-  /*
-   * =======================================================
-   * AUDITORIA
-   * =======================================================
-   */
+  if (session) {
+    await registerLogoutAudit({
+      userId:
+        session.userId,
 
-  if (
-    session
-  ) {
-    try {
-      await createAdminAuditLog({
-        actorId:
-          session.userId,
+      jobTitle:
+        session.jobTitle,
 
-        module:
-          "DASHBOARD",
-
-        action:
-          "ADMIN_LOGOUT",
-
-        entityType:
-          "ADMIN_USER",
-
-        entityId:
-          session.userId,
-
-        changes: {
-          event:
-            "LOGOUT",
-
-          sessionId:
-            session.sessionId,
-
-          jobTitle:
-            session.jobTitle,
-
-          isSuperAdmin:
-            session.isSuperAdmin,
-        },
-      });
-    } catch (
-      auditError
-    ) {
-      /*
-       * Um erro apenas no histórico não pode
-       * impedir o usuário de sair.
-       */
-
-      console.error(
-        "Falha ao registrar auditoria do logout administrativo:",
-        auditError instanceof
-          Error
-          ? auditError.name
-          : "UnknownError"
-      );
-    }
+      scope:
+        "CURRENT_SESSION",
+    });
   }
-
-  /*
-   * =======================================================
-   * REVOGAR SESSÃO
-   * =======================================================
-   */
 
   await revokeCurrentAdminSession();
 
-  /*
-   * =======================================================
-   * RESPOSTA
-   * =======================================================
-   */
-
   const response =
     jsonResponse({
-      success:
-        true,
+      success: true,
 
       message:
         "Logout realizado com sucesso.",
@@ -242,9 +190,80 @@ export async function POST(
         "/admin/login",
     });
 
+  return clearAdminCookie(
+    response
+  );
+}
+
+/*
+ * =========================================================
+ * DELETE
+ * =========================================================
+ *
+ * Logout de TODOS os dispositivos.
+ *
+ * É obrigatório possuir uma sessão administrativa válida,
+ * pois precisamos saber qual usuário terá todas as sessões
+ * revogadas.
+ */
+export async function DELETE(
+  request: Request
+) {
+  if (
+    !isAllowedOrigin(request)
+  ) {
+    return jsonResponse(
+      {
+        error:
+          "Você não tem permissão para fazer isso! Acesso negado.",
+      },
+      403
+    );
+  }
+
+  const session =
+    await getAdminSession();
+
+  if (!session) {
+    return clearAdminCookie(
+      jsonResponse(
+        {
+          error:
+            "Sessão administrativa inválida ou expirada.",
+        },
+        401
+      )
+    );
+  }
+
   /*
-   * Remove o token do navegador.
+   * Registramos antes da revogação para manter a autoria.
    */
+  await registerLogoutAudit({
+    userId:
+      session.userId,
+
+    jobTitle:
+      session.jobTitle,
+
+    scope:
+      "ALL_SESSIONS",
+  });
+
+  await revokeAllAdminSessions(
+    session.userId
+  );
+
+  const response =
+    jsonResponse({
+      success: true,
+
+      message:
+        "Todas as sessões administrativas foram encerradas.",
+
+      redirectTo:
+        "/admin/login",
+    });
 
   return clearAdminCookie(
     response

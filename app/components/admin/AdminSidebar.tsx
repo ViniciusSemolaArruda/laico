@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LoaderCircle,
   LogOut,
+  MonitorX,
   Package,
   Settings,
   ShoppingBag,
@@ -229,6 +230,12 @@ export default function AdminSidebar({
   ] =
     useState(false);
 
+  const [
+    loggingOutAll,
+    setLoggingOutAll,
+  ] =
+    useState(false);
+
   /*
    * =======================================================
    * PERMISSÃO VISUAL
@@ -302,7 +309,8 @@ export default function AdminSidebar({
 
   async function handleLogout() {
     if (
-      loggingOut
+      loggingOut ||
+      loggingOutAll
     ) {
       return;
     }
@@ -362,6 +370,94 @@ export default function AdminSidebar({
       );
 
       setLoggingOut(
+        false
+      );
+    }
+  }
+
+  /*
+   * =======================================================
+   * LOGOUT DE TODOS OS DISPOSITIVOS
+   * =======================================================
+   */
+
+  async function handleLogoutAll() {
+    if (
+      loggingOut ||
+      loggingOutAll
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "Tem certeza que deseja sair de todos os dispositivos? Todas as sessões desta conta administrativa serão encerradas."
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setLoggingOutAll(
+      true
+    );
+
+    try {
+      const response =
+        await fetch(
+          "/api/admin/logout",
+          {
+            method:
+              "DELETE",
+
+            credentials:
+              "same-origin",
+          }
+        );
+
+      let data: {
+        error?: string;
+        redirectTo?: string;
+      } = {};
+
+      try {
+        data =
+          (await response.json()) as {
+            error?: string;
+            redirectTo?: string;
+          };
+      } catch {
+        // Uma resposta sem JSON é tratada abaixo.
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "LOGOUT_ALL_FAILED"
+        );
+      }
+
+      router.replace(
+        data.redirectTo ||
+          "/admin/login"
+      );
+
+      router.refresh();
+    } catch (
+      error
+    ) {
+      console.error(
+        "Erro ao encerrar todas as sessões:",
+        error instanceof Error
+          ? error.name
+          : "UnknownError"
+      );
+
+      alert(
+        "Não foi possível sair de todos os dispositivos. Tente novamente."
+      );
+
+      setLoggingOutAll(
         false
       );
     }
@@ -526,7 +622,8 @@ export default function AdminSidebar({
               handleLogout
             }
             disabled={
-              loggingOut
+              loggingOut ||
+              loggingOutAll
             }
             className="flex h-10 w-full items-center gap-3 rounded-xl px-4 text-left text-sm font-bold text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -546,6 +643,36 @@ export default function AdminSidebar({
             {loggingOut
               ? "Saindo..."
               : "Sair do sistema"}
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              handleLogoutAll
+            }
+            disabled={
+              loggingOut ||
+              loggingOutAll
+            }
+            className="mt-1 flex min-h-10 w-full items-center gap-3 rounded-xl px-4 py-2 text-left text-[12px] font-bold leading-4 text-red-300/70 transition hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loggingOutAll ? (
+              <LoaderCircle
+                size={17}
+                className="shrink-0 animate-spin"
+                aria-hidden="true"
+              />
+            ) : (
+              <MonitorX
+                size={17}
+                className="shrink-0"
+                aria-hidden="true"
+              />
+            )}
+
+            {loggingOutAll
+              ? "Encerrando sessões..."
+              : "Sair de todos os dispositivos"}
           </button>
         </div>
       </div>
