@@ -108,6 +108,17 @@ class CheckoutIdentityConflictError extends Error {
   }
 }
 
+class CheckoutStockConflictError extends Error {
+  constructor() {
+    super(
+      "CHECKOUT_STOCK_CONFLICT"
+    );
+
+    this.name =
+      "CheckoutStockConflictError";
+  }
+}
+
 function normalizeText(
   value: unknown,
   maximumLength = 255
@@ -850,6 +861,9 @@ export async function POST(
 
             active:
               true,
+
+            archivedAt:
+              null,
           },
 
           select: {
@@ -873,6 +887,9 @@ export async function POST(
 
               active:
                 true,
+
+              archivedAt:
+                null,
             },
 
             select: {
@@ -1229,7 +1246,85 @@ export async function POST(
            * ===============================================
            */
 
-          return transaction.order.create({
+          /*
+           * ===============================================
+           * RESERVA ATÔMICA DO ESTOQUE
+           * ===============================================
+           *
+           * O saldo precisa continuar exatamente igual ao
+           * valor consultado antes da transação. Se outra
+           * compra ou movimentação alterar o produto nesse
+           * intervalo, nenhuma parte do checkout é salva.
+           */
+
+          const stockReservations: Array<{
+            productId: string;
+            quantity: number;
+            previousStock: number;
+            newStock: number;
+          }> = [];
+
+          for (
+            const product of
+            products
+          ) {
+            const newStock =
+              product.stock -
+              product.quantity;
+
+            if (
+              newStock < 0
+            ) {
+              throw new CheckoutStockConflictError();
+            }
+
+            const stockUpdate =
+              await transaction.product.updateMany({
+                where: {
+                  id:
+                    product.id,
+
+                  active:
+                    true,
+
+                  archivedAt:
+                    null,
+
+                  stock:
+                    product.stock,
+                },
+
+                data: {
+                  stock: {
+                    decrement:
+                      product.quantity,
+                  },
+                },
+              });
+
+            if (
+              stockUpdate.count !==
+              1
+            ) {
+              throw new CheckoutStockConflictError();
+            }
+
+            stockReservations.push({
+              productId:
+                product.id,
+
+              quantity:
+                product.quantity,
+
+              previousStock:
+                product.stock,
+
+              newStock,
+            });
+          }
+
+          const createdOrder =
+            await transaction.order.create({
             data: {
               userId:
                 orderUserId,
@@ -1280,6 +1375,50 @@ export async function POST(
               },
             },
           });
+
+          /*
+           * Cada reserva fica vinculada ao pedido.
+           * A restrição única do banco impede que o mesmo
+           * pedido reserve duas vezes o mesmo produto.
+           */
+
+          await transaction.productStockMovement.createMany({
+            data:
+              stockReservations.map(
+                (
+                  reservation
+                ) => ({
+                  productId:
+                    reservation.productId,
+
+                  actorId:
+                    null,
+
+                  orderId:
+                    createdOrder.id,
+
+                  type:
+                    "ORDER_RESERVATION",
+
+                  quantity:
+                    reservation.quantity,
+
+                  previousStock:
+                    reservation.previousStock,
+
+                  newStock:
+                    reservation.newStock,
+
+                  reason:
+                    "Reserva de estoque do pedido",
+
+                  note:
+                    null,
+                })
+              ),
+          });
+
+          return createdOrder;
         }
       );
 
@@ -1400,6 +1539,22 @@ export async function POST(
     ) {
       return errorResponse(
         "Não foi possível concluir o checkout com os dados informados.",
+        409
+      );
+    }
+
+    /*
+     * O estoque mudou entre a consulta e a gravação.
+     * O pedido não foi criado e nenhuma unidade foi
+     * reservada parcialmente.
+     */
+
+    if (
+      error instanceof
+      CheckoutStockConflictError
+    ) {
+      return errorResponse(
+        "O estoque de um dos produtos foi alterado. Atualize o carrinho e tente novamente.",
         409
       );
     }

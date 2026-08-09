@@ -71,6 +71,8 @@ enum StockMovementType {
   ENTRY
   EXIT
   ADJUSTMENT
+  ORDER_RESERVATION
+  ORDER_RESTORE
 }
 
 /**
@@ -464,46 +466,49 @@ model ProductStockMovement {
   id String @id @default(cuid())
 
   productId String
-  actorId   String
+
+  /**
+   * Funcionário responsável em movimentações manuais.
+   * Movimentações automáticas do checkout não possuem actorId.
+   */
+  actorId String?
+
+  /**
+   * Pedido responsável pela reserva ou reposição.
+   * Movimentações manuais não possuem orderId.
+   */
+  orderId String?
 
   type StockMovementType
 
-  /**
-   * Sempre um número positivo.
-   * ENTRY/EXIT representam quantidade movimentada.
-   * ADJUSTMENT representa a diferença absoluta entre
-   * o estoque anterior e o novo estoque.
-   */
   quantity Int
 
   previousStock Int
   newStock      Int
 
-  /**
-   * Motivo obrigatório informado pelo funcionário.
-   */
   reason String
+  note   String?
 
-  /**
-   * Observação adicional opcional.
-   */
-  note String?
-
-  /**
-   * Restrict é intencional:
-   * produtos e funcionários ligados a um histórico
-   * de estoque não devem ser apagados fisicamente.
-   */
   product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
-  actor   User    @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
 
+  /**
+   * Um pedido só pode reservar ou devolver o estoque
+   * de cada produto uma única vez.
+   * Como PostgreSQL permite vários NULL em unique,
+   * isso não interfere nas movimentações manuais.
+   */
+  @@unique([orderId, productId, type])
   @@index([productId])
   @@index([actorId])
+  @@index([orderId])
   @@index([type])
   @@index([createdAt])
   @@index([productId, createdAt])
+  @@index([orderId, createdAt])
 }
 
 /**
@@ -584,10 +589,11 @@ model Order {
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   address Address? @relation(fields: [addressId], references: [id])
 
-  items        OrderItem[]
-  payment      Payment?
-  history      OrderStatusHistory[]
-  accessTokens OrderAccessToken[]
+  items          OrderItem[]
+  payment        Payment?
+  history        OrderStatusHistory[]
+  accessTokens   OrderAccessToken[]
+  stockMovements ProductStockMovement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

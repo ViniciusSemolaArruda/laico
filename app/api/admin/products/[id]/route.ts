@@ -57,7 +57,6 @@ type ProductBody = {
   category?: unknown;
   religions?: unknown;
 
-  stock?: unknown;
   minimumStock?: unknown;
 
   weight?: unknown;
@@ -682,6 +681,28 @@ export async function PATCH(
     }
 
     /*
+     * O estoque não pode ser alterado pela edição geral.
+     * Toda movimentação precisa passar pela rota dedicada,
+     * que registra motivo, responsável, antes/depois e
+     * protege contra alterações concorrentes.
+     */
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "stock"
+      )
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "Utilize o controle de estoque para alterar a quantidade do produto.",
+        },
+        400
+      );
+    }
+
+    /*
      * Produto atual.
      */
 
@@ -881,12 +902,6 @@ export async function PATCH(
           maximum:
             99_999_999,
         }
-      );
-
-    const stock =
-      parseInteger(
-        body.stock,
-        "Estoque"
       );
 
     const minimumStockText =
@@ -1271,8 +1286,6 @@ export async function PATCH(
 
                   category,
 
-                  stock,
-
                   minimumStock,
 
                   weight:
@@ -1425,14 +1438,6 @@ export async function PATCH(
                         : salePrice.toFixed(
                             2
                           ),
-                  },
-
-                  stock: {
-                    before:
-                      currentProduct.stock,
-
-                    after:
-                      stock,
                   },
 
                   category: {

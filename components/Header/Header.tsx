@@ -10,7 +10,11 @@ import {
 } from "lucide-react";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+
+import {
+  useEffect,
+  useState,
+} from "react";
 
 import PromotionalBar from "@/components/PromotionalBar/PromotionalBar";
 
@@ -25,8 +29,82 @@ type StoredCartItem = {
   quantity?: unknown;
 };
 
+type HeaderProps = {
+  initialSearch?: string;
+  initialActiveMenu?: string;
+};
+
+const CATALOG_MENU_ITEMS = [
+  {
+    label:
+      "Todos",
+
+    href:
+      "/",
+  },
+
+  {
+    label:
+      "Novidades",
+
+    href:
+      "/?ordem=recentes",
+  },
+
+  {
+    label:
+      "Mais Vendidos",
+
+    href:
+      "/?ordem=mais-vendidos",
+  },
+
+  {
+    label:
+      "Artigos Religiosos",
+
+    href:
+      "/?categoria=Artigos+Religiosos",
+  },
+
+  {
+    label:
+      "Acessórios Femininos",
+
+    href:
+      "/?categoria=Acessórios+Femininos",
+  },
+
+  {
+    label:
+      "Chaveiro",
+
+    href:
+      "/?categoria=Chaveiro",
+  },
+
+  {
+    label:
+      "Acessórios & Embalagem",
+
+    href:
+      "/?categoria=Acessórios+%26+Embalagem",
+  },
+
+  {
+    label:
+      "Coleções",
+
+    href:
+      "/?categoria=Coleções",
+  },
+] as const;
+
 function getStoredCartCount() {
-  if (typeof window === "undefined") {
+  if (
+    typeof window ===
+    "undefined"
+  ) {
     return 0;
   }
 
@@ -40,10 +118,17 @@ function getStoredCartCount() {
       return 0;
     }
 
-    const parsed: unknown =
-      JSON.parse(storedCart);
+    const parsed:
+      unknown =
+      JSON.parse(
+        storedCart
+      );
 
-    if (!Array.isArray(parsed)) {
+    if (
+      !Array.isArray(
+        parsed
+      )
+    ) {
       return 0;
     }
 
@@ -53,9 +138,13 @@ function getStoredCartCount() {
         item: unknown
       ) => {
         if (
-          typeof item !== "object" ||
+          typeof item !==
+            "object" ||
           item === null ||
-          !("quantity" in item)
+          !(
+            "quantity" in
+            item
+          )
         ) {
           return total;
         }
@@ -64,18 +153,25 @@ function getStoredCartCount() {
           item as StoredCartItem;
 
         const quantity =
-          Number(cartItem.quantity);
+          Number(
+            cartItem.quantity
+          );
 
         if (
-          !Number.isFinite(quantity) ||
-          quantity <= 0
+          !Number.isFinite(
+            quantity
+          ) ||
+          quantity <=
+            0
         ) {
           return total;
         }
 
         return (
           total +
-          Math.floor(quantity)
+          Math.floor(
+            quantity
+          )
         );
       },
       0
@@ -85,42 +181,58 @@ function getStoredCartCount() {
   }
 }
 
-export default function Header() {
+export default function Header({
+  initialSearch = "",
+  initialActiveMenu =
+    "Todos",
+}: HeaderProps = {}) {
   const [
     menuOpen,
     setMenuOpen,
-  ] = useState(false);
+  ] =
+    useState(
+      false
+    );
 
   const [
     cartCount,
     setCartCount,
-  ] = useState(0);
+  ] =
+    useState(
+      0
+    );
 
   const [
     sessionLoaded,
     setSessionLoaded,
-  ] = useState(false);
+  ] =
+    useState(
+      false
+    );
 
   const [
     authenticated,
     setAuthenticated,
-  ] = useState(false);
+  ] =
+    useState(
+      false
+    );
 
   const [
     firstName,
     setFirstName,
-  ] = useState("");
+  ] =
+    useState(
+      ""
+    );
 
-  const menuItems = [
-    "Todos",
-    "Novidades",
-    "Mais Vendidos",
-    "Artigos Religiosos",
-    "Acessórios Femininos",
-    "Chaveiro",
-    "Acessórios & Embalagem",
-    "Coleções",
-  ];
+  const [
+    activeMenu,
+    setActiveMenu,
+  ] =
+    useState(
+      initialActiveMenu
+    );
 
   /*
    * =======================================================
@@ -136,11 +248,14 @@ export default function Header() {
     }
 
     function handleStorage(
-      event: StorageEvent
+      event:
+        StorageEvent
     ) {
       if (
-        event.key === "laico-cart" ||
-        event.key === null
+        event.key ===
+          "laico-cart" ||
+        event.key ===
+          null
       ) {
         updateCartCount();
       }
@@ -205,7 +320,8 @@ export default function Header() {
           await fetch(
             "/api/auth/session",
             {
-              method: "GET",
+              method:
+                "GET",
 
               credentials:
                 "same-origin",
@@ -218,8 +334,12 @@ export default function Header() {
             }
           );
 
-        if (!response.ok) {
-          setAuthenticated(false);
+        if (
+          !response.ok
+        ) {
+          setAuthenticated(
+            false
+          );
 
           return;
         }
@@ -228,11 +348,15 @@ export default function Header() {
           (await response.json()) as SessionResponse;
 
         if (
-          data.authenticated === true &&
-          typeof data.firstName === "string" &&
+          data.authenticated ===
+            true &&
+          typeof data.firstName ===
+            "string" &&
           data.firstName.trim()
         ) {
-          setAuthenticated(true);
+          setAuthenticated(
+            true
+          );
 
           setFirstName(
             data.firstName.trim()
@@ -241,21 +365,33 @@ export default function Header() {
           return;
         }
 
-        setAuthenticated(false);
-      } catch (error) {
+        setAuthenticated(
+          false
+        );
+      } catch (
+        error
+      ) {
         if (
-          error instanceof Error &&
-          error.name === "AbortError"
+          error instanceof
+            Error &&
+          error.name ===
+            "AbortError"
         ) {
           return;
         }
 
-        setAuthenticated(false);
+        setAuthenticated(
+          false
+        );
       } finally {
         if (
-          !controller.signal.aborted
+          !controller
+            .signal
+            .aborted
         ) {
-          setSessionLoaded(true);
+          setSessionLoaded(
+            true
+          );
         }
       }
     }
@@ -279,48 +415,78 @@ export default function Header() {
       : "/entrar";
 
   const cartLabel =
-    cartCount > 99
+    cartCount >
+    99
       ? "99+"
       : cartCount;
 
   return (
     <>
-      <header className={styles.header}>
-        {/* =================================================
-            FAIXA PROMOCIONAL
-        ================================================= */}
+      <header
+        className={
+          styles.header
+        }
+      >
+        {/* FAIXA PROMOCIONAL */}
 
         <PromotionalBar />
 
-        {/* =================================================
-            DESKTOP / NOTEBOOK
-        ================================================= */}
+        {/* DESKTOP */}
 
-        <div className={styles.desktopHeader}>
-          {/* ===============================================
-              ESQUERDA - BUSCA
-          ================================================ */}
+        <div
+          className={
+            styles.desktopHeader
+          }
+        >
+          {/* BUSCA */}
 
-          <div className={styles.desktopLeft}>
-            <div className={styles.searchBox}>
+          <div
+            className={
+              styles.desktopLeft
+            }
+          >
+            <form
+              action="/"
+              method="GET"
+              role="search"
+              className={
+                styles.searchBox
+              }
+            >
               <input
                 type="text"
+                name="busca"
+                defaultValue={
+                  initialSearch
+                }
+                maxLength={
+                  120
+                }
+                autoComplete="off"
                 placeholder="O que você está procurando?"
                 aria-label="Pesquisar produtos"
               />
 
-              <Search size={21} />
-            </div>
+              <button
+                type="submit"
+                aria-label="Pesquisar"
+                className="flex shrink-0 items-center justify-center border-0 bg-transparent p-0 text-inherit"
+              >
+                <Search
+                  size={21}
+                />
+              </button>
+            </form>
           </div>
 
-          {/* ===============================================
-              CENTRO - LOGO
-          ================================================ */}
+          {/* LOGO */}
 
           <Link
             href="/"
             aria-label="Página inicial"
-            className={styles.desktopLogo}
+            className={
+              styles.desktopLogo
+            }
           >
             <img
               src="/logo3.png"
@@ -328,23 +494,33 @@ export default function Header() {
             />
           </Link>
 
-          {/* ===============================================
-              DIREITA
-          ================================================ */}
+          {/* AÇÕES */}
 
-          <div className={styles.desktopActions}>
-            {/* FALE CONOSCO */}
+          <div
+            className={
+              styles.desktopActions
+            }
+          >
+            {/* CONTATO */}
 
             <Link
               href="/contato"
-              className={styles.contact}
+              className={
+                styles.contact
+              }
             >
               <Phone
                 size={27}
-                strokeWidth={1.8}
+                strokeWidth={
+                  1.8
+                }
               />
 
-              <span className={styles.contactText}>
+              <span
+                className={
+                  styles.contactText
+                }
+              >
                 <strong>
                   Fale Conosco
                 </strong>
@@ -366,12 +542,19 @@ export default function Header() {
                   }
                 >
                   <User
-                    size={24}
-                    strokeWidth={1.8}
+                    size={
+                      24
+                    }
+                    strokeWidth={
+                      1.8
+                    }
                   />
 
                   <span>
-                    Olá, {firstName}
+                    Olá,{" "}
+                    {
+                      firstName
+                    }
                   </span>
                 </Link>
               ) : (
@@ -381,8 +564,12 @@ export default function Header() {
                   }
                 >
                   <User
-                    size={26}
-                    strokeWidth={1.8}
+                    size={
+                      26
+                    }
+                    strokeWidth={
+                      1.8
+                    }
                   />
 
                   <div
@@ -405,7 +592,8 @@ export default function Header() {
                         styles.accountGuestLink
                       }
                     >
-                      faça seu login
+                      faça seu
+                      login
                     </Link>
                   </div>
                 </div>
@@ -418,7 +606,9 @@ export default function Header() {
               >
                 <User
                   size={26}
-                  strokeWidth={1.8}
+                  strokeWidth={
+                    1.8
+                  }
                 />
 
                 <span
@@ -434,40 +624,56 @@ export default function Header() {
             <Link
               href="/carrinho"
               aria-label={`Carrinho com ${cartCount} produto(s)`}
-              className={styles.cartButton}
+              className={
+                styles.cartButton
+              }
             >
-              <ShoppingCart size={27} />
+              <ShoppingCart
+                size={27}
+              />
 
               <span
-                className={styles.cartBadge}
+                className={
+                  styles.cartBadge
+                }
               >
-                {cartLabel}
+                {
+                  cartLabel
+                }
               </span>
             </Link>
           </div>
         </div>
 
-        {/* =================================================
-            MOBILE
-        ================================================= */}
+        {/* MOBILE */}
 
-        <div className={styles.mobileHeader}>
-          {/* MENU | LOGO | CARRINHO */}
-
-          <div className={styles.mobileTop}>
+        <div
+          className={
+            styles.mobileHeader
+          }
+        >
+          <div
+            className={
+              styles.mobileTop
+            }
+          >
             {/* MENU */}
 
             <button
               type="button"
               onClick={() =>
-                setMenuOpen(true)
+                setMenuOpen(
+                  true
+                )
               }
               aria-label="Abrir menu"
               className={
                 styles.mobileMenuButton
               }
             >
-              <Menu size={27} />
+              <Menu
+                size={27}
+              />
             </button>
 
             {/* LOGO */}
@@ -494,69 +700,115 @@ export default function Header() {
                 styles.mobileCartButton
               }
             >
-              <ShoppingCart size={27} />
+              <ShoppingCart
+                size={27}
+              />
 
               <span
-                className={styles.cartBadge}
+                className={
+                  styles.cartBadge
+                }
               >
-                {cartLabel}
+                {
+                  cartLabel
+                }
               </span>
             </Link>
           </div>
 
-          {/* BUSCA */}
+          {/* BUSCA MOBILE */}
 
-          <div className={styles.mobileSearch}>
+          <form
+            action="/"
+            method="GET"
+            role="search"
+            className={
+              styles.mobileSearch
+            }
+          >
             <input
               type="text"
+              name="busca"
+              defaultValue={
+                initialSearch
+              }
+              maxLength={
+                120
+              }
+              autoComplete="off"
               placeholder="O que você está procurando?"
               aria-label="Pesquisar produtos"
             />
 
-            <Search size={21} />
-          </div>
+            <button
+              type="submit"
+              aria-label="Pesquisar"
+              className="flex shrink-0 items-center justify-center border-0 bg-transparent p-0 text-inherit"
+            >
+              <Search
+                size={21}
+              />
+            </button>
+          </form>
         </div>
 
-        {/* =================================================
-            NAVEGAÇÃO
-        ================================================= */}
+        {/* NAVEGAÇÃO */}
 
-        <nav className={styles.navigation}>
-          <div className={styles.navigationInner}>
-            {menuItems.map(
-              (item) => (
-                <button
-                  type="button"
-                  key={item}
+        <nav
+          className={
+            styles.navigation
+          }
+        >
+          <div
+            className={
+              styles.navigationInner
+            }
+          >
+            {CATALOG_MENU_ITEMS.map(
+              (
+                item
+              ) => (
+                <Link
+                  href={
+                    item.href
+                  }
+                  key={
+                    item.label
+                  }
+                  onClick={() =>
+                    setActiveMenu(
+                      item.label
+                    )
+                  }
                   className={`${
                     styles.navigationItem
                   } ${
-                    item ===
-                    "Artigos Religiosos"
+                    activeMenu ===
+                    item.label
                       ? styles.navigationItemActive
                       : ""
                   }`}
                 >
-                  {item}
+                  {
+                    item.label
+                  }
 
-                  {item ===
-                    "Artigos Religiosos" && (
+                  {activeMenu ===
+                    item.label && (
                     <span
                       className={
                         styles.activeLine
                       }
                     />
                   )}
-                </button>
+                </Link>
               )
             )}
           </div>
         </nav>
       </header>
 
-      {/* ===================================================
-          MENU LATERAL MOBILE
-      =================================================== */}
+      {/* MENU MOBILE */}
 
       <div
         className={`${
@@ -567,8 +819,6 @@ export default function Header() {
             : ""
         }`}
       >
-        {/* FUNDO */}
-
         <button
           type="button"
           aria-label="Fechar menu"
@@ -576,11 +826,11 @@ export default function Header() {
             styles.mobileBackdrop
           }
           onClick={() =>
-            setMenuOpen(false)
+            setMenuOpen(
+              false
+            )
           }
         />
-
-        {/* PAINEL */}
 
         <aside
           className={`${
@@ -601,7 +851,9 @@ export default function Header() {
             <Link
               href="/"
               onClick={() =>
-                setMenuOpen(false)
+                setMenuOpen(
+                  false
+                )
               }
               className={
                 styles.mobileMenuLogo
@@ -616,36 +868,61 @@ export default function Header() {
             <button
               type="button"
               onClick={() =>
-                setMenuOpen(false)
+                setMenuOpen(
+                  false
+                )
               }
               aria-label="Fechar menu"
               className={
                 styles.closeMenuButton
               }
             >
-              <X size={28} />
+              <X
+                size={28}
+              />
             </button>
           </div>
 
           {/* CATEGORIAS */}
 
-          <div className={styles.mobileCategories}>
-            {menuItems.map(
-              (item) => (
-                <button
-                  type="button"
-                  key={item}
+          <div
+            className={
+              styles.mobileCategories
+            }
+          >
+            {CATALOG_MENU_ITEMS.map(
+              (
+                item
+              ) => (
+                <Link
+                  href={
+                    item.href
+                  }
+                  key={
+                    item.label
+                  }
+                  onClick={() => {
+                    setActiveMenu(
+                      item.label
+                    );
+
+                    setMenuOpen(
+                      false
+                    );
+                  }}
                   className={`${
                     styles.mobileCategory
                   } ${
-                    item ===
-                    "Artigos Religiosos"
+                    activeMenu ===
+                    item.label
                       ? styles.mobileCategoryActive
                       : ""
                   }`}
                 >
-                  {item}
-                </button>
+                  {
+                    item.label
+                  }
+                </Link>
               )
             )}
           </div>
@@ -657,18 +934,24 @@ export default function Header() {
               styles.mobileMenuActions
             }
           >
-            {/* FALE CONOSCO */}
+            {/* CONTATO */}
 
             <Link
               href="/contato"
               onClick={() =>
-                setMenuOpen(false)
+                setMenuOpen(
+                  false
+                )
               }
-              className={styles.mobileContact}
+              className={
+                styles.mobileContact
+              }
             >
               <Phone
                 size={21}
-                strokeWidth={1.8}
+                strokeWidth={
+                  1.8
+                }
               />
 
               <span>
@@ -687,18 +970,27 @@ export default function Header() {
             {sessionLoaded ? (
               authenticated ? (
                 <Link
-                  href={accountHref}
+                  href={
+                    accountHref
+                  }
                   onClick={() =>
-                    setMenuOpen(false)
+                    setMenuOpen(
+                      false
+                    )
                   }
                   className={
                     styles.mobileMenuAction
                   }
                 >
-                  <User size={20} />
+                  <User
+                    size={20}
+                  />
 
                   <span>
-                    Olá, {firstName}
+                    Olá,{" "}
+                    {
+                      firstName
+                    }
                   </span>
                 </Link>
               ) : (
@@ -707,13 +999,17 @@ export default function Header() {
                     styles.mobileGuestAccount
                   }
                 >
-                  <User size={20} />
+                  <User
+                    size={20}
+                  />
 
                   <div>
                     <Link
                       href="/criar-conta"
                       onClick={() =>
-                        setMenuOpen(false)
+                        setMenuOpen(
+                          false
+                        )
                       }
                     >
                       Cadastre-se
@@ -722,10 +1018,13 @@ export default function Header() {
                     <Link
                       href="/entrar"
                       onClick={() =>
-                        setMenuOpen(false)
+                        setMenuOpen(
+                          false
+                        )
                       }
                     >
-                      faça seu login
+                      faça seu
+                      login
                     </Link>
                   </div>
                 </div>
@@ -736,7 +1035,9 @@ export default function Header() {
                   styles.mobileMenuAction
                 }
               >
-                <User size={20} />
+                <User
+                  size={20}
+                />
 
                 <span
                   className={
@@ -751,7 +1052,9 @@ export default function Header() {
             <Link
               href="/carrinho"
               onClick={() =>
-                setMenuOpen(false)
+                setMenuOpen(
+                  false
+                )
               }
               className={
                 styles.mobileMenuAction
@@ -762,14 +1065,18 @@ export default function Header() {
                   styles.mobileDrawerCart
                 }
               >
-                <ShoppingCart size={20} />
+                <ShoppingCart
+                  size={20}
+                />
 
                 <span
                   className={
                     styles.drawerCartBadge
                   }
                 >
-                  {cartLabel}
+                  {
+                    cartLabel
+                  }
                 </span>
               </span>
 

@@ -1,7 +1,18 @@
-import { NextResponse } from "next/server";
+import {
+  NextResponse,
+} from "next/server";
 
-import { getAdminSession } from "@/lib/admin-auth";
-import { prisma } from "@/lib/prisma";
+import {
+  requireAdminPermission,
+} from "@/lib/admin-auth";
+
+import {
+  restoreOrderReservedStock,
+} from "@/lib/orders/restoreOrderStock";
+
+import {
+  prisma,
+} from "@/lib/prisma";
 
 type OrderStatus =
   | "PENDING"
@@ -39,7 +50,8 @@ type UpdateOrderBody = {
 const ACCESS_DENIED_MESSAGE =
   "Você não tem permissão para fazer isso! Acesso negado.";
 
-const MAXIMUM_REQUEST_SIZE = 10_000;
+const MAXIMUM_REQUEST_SIZE =
+  10_000;
 
 const adminEditableStatuses:
   readonly AdminEditableStatus[] = [
@@ -57,13 +69,19 @@ const allowedTransitions: Record<
 > = {
   /*
    * PAID e REFUNDED são controlados pelo
-   * Mercado Pago e nunca são definidos aqui.
+   * Mercado Pago e não são definidos aqui.
    */
-  PENDING: ["CANCELED"],
+  PENDING: [
+    "CANCELED",
+  ],
 
-  PAID: ["PROCESSING"],
+  PAID: [
+    "PROCESSING",
+  ],
 
-  PROCESSING: ["SHIPPED"],
+  PROCESSING: [
+    "SHIPPED",
+  ],
 
   SHIPPED: [
     "OUT_FOR_DELIVERY",
@@ -76,7 +94,9 @@ const allowedTransitions: Record<
     "RETURNED",
   ],
 
-  DELIVERED: ["RETURNED"],
+  DELIVERED: [
+    "RETURNED",
+  ],
 
   CANCELED: [],
 
@@ -109,32 +129,48 @@ const statusTitles: Record<
 };
 
 function jsonResponse(
-  body: Record<string, unknown>,
+  body: Record<
+    string,
+    unknown
+  >,
   status = 200
 ) {
-  return NextResponse.json(body, {
-    status,
-    headers: {
-      "Cache-Control":
-        "private, no-store, no-cache, must-revalidate",
-      Pragma: "no-cache",
-      "X-Content-Type-Options":
-        "nosniff",
-    },
-  });
+  return NextResponse.json(
+    body,
+    {
+      status,
+
+      headers: {
+        "Cache-Control":
+          "private, no-store, no-cache, must-revalidate",
+
+        Pragma:
+          "no-cache",
+
+        "X-Content-Type-Options":
+          "nosniff",
+      },
+    }
+  );
 }
 
 function normalizeText(
   value: unknown,
   maximumLength: number
 ) {
-  if (typeof value !== "string") {
+  if (
+    typeof value !==
+    "string"
+  ) {
     return "";
   }
 
   return value
     .trim()
-    .slice(0, maximumLength);
+    .slice(
+      0,
+      maximumLength
+    );
 }
 
 function normalizeNullableText(
@@ -147,7 +183,75 @@ function normalizeNullableText(
       maximumLength
     );
 
-  return normalized || null;
+  return (
+    normalized ||
+    null
+  );
+}
+
+function isAllowedOrigin(
+  request: Request
+) {
+  const origin =
+    request.headers.get(
+      "origin"
+    );
+
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    return (
+      origin ===
+      new URL(
+        request.url
+      ).origin
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getAuthorizationResponse(
+  error: unknown
+) {
+  if (
+    !(
+      error instanceof
+      Error
+    )
+  ) {
+    return null;
+  }
+
+  if (
+    error.message ===
+    "ADMIN_UNAUTHORIZED"
+  ) {
+    return jsonResponse(
+      {
+        error:
+          ACCESS_DENIED_MESSAGE,
+      },
+      401
+    );
+  }
+
+  if (
+    error.message ===
+    "ADMIN_FORBIDDEN"
+  ) {
+    return jsonResponse(
+      {
+        error:
+          ACCESS_DENIED_MESSAGE,
+      },
+      403
+    );
+  }
+
+  return null;
 }
 
 function isValidOrderId(
@@ -162,7 +266,8 @@ function isAdminEditableStatus(
   value: unknown
 ): value is AdminEditableStatus {
   return (
-    typeof value === "string" &&
+    typeof value ===
+      "string" &&
     adminEditableStatuses.includes(
       value as AdminEditableStatus
     )
@@ -171,11 +276,14 @@ function isAdminEditableStatus(
 
 function isAllowedTransition(
   currentStatus: OrderStatus,
-  nextStatus: AdminEditableStatus
+  nextStatus:
+    AdminEditableStatus
 ) {
   return allowedTransitions[
     currentStatus
-  ].includes(nextStatus);
+  ].includes(
+    nextStatus
+  );
 }
 
 function isValidTrackingUrl(
@@ -186,20 +294,27 @@ function isValidTrackingUrl(
   }
 
   try {
-    const url = new URL(value);
+    const url =
+      new URL(
+        value
+      );
 
     /*
-     * Links exibidos ao comprador devem
-     * utilizar HTTPS.
+     * Links de rastreamento apresentados
+     * ao cliente devem utilizar HTTPS.
      */
-    return url.protocol === "https:";
+    return (
+      url.protocol ===
+      "https:"
+    );
   } catch {
     return false;
   }
 }
 
 function getDefaultMessage(
-  status: AdminEditableStatus
+  status:
+    AdminEditableStatus
 ) {
   switch (status) {
     case "PROCESSING":
@@ -226,34 +341,65 @@ function isRecordNotFoundError(
   error: unknown
 ) {
   if (
-    typeof error !== "object" ||
+    typeof error !==
+      "object" ||
     error === null ||
     !("code" in error)
   ) {
     return false;
   }
 
-  return error.code === "P2025";
+  return (
+    error.code ===
+    "P2025"
+  );
 }
 
 export async function PATCH(
   request: Request,
-  { params }: Props
+  {
+    params,
+  }: Props
 ) {
-  const session =
-    await getAdminSession();
-
-  if (!session) {
-    return jsonResponse(
-      {
-        error:
-          ACCESS_DENIED_MESSAGE,
-      },
-      401
-    );
-  }
-
   try {
+    /*
+     * =====================================================
+     * ORIGEM
+     * =====================================================
+     */
+
+    if (
+      !isAllowedOrigin(
+        request
+      )
+    ) {
+      return jsonResponse(
+        {
+          error:
+            ACCESS_DENIED_MESSAGE,
+        },
+        403
+      );
+    }
+
+    /*
+     * =====================================================
+     * AUTORIZAÇÃO
+     * =====================================================
+     */
+
+    const session =
+      await requireAdminPermission(
+        "ORDERS",
+        "EDIT"
+      );
+
+    /*
+     * =====================================================
+     * REQUISIÇÃO
+     * =====================================================
+     */
+
     const contentType =
       request.headers.get(
         "content-type"
@@ -275,11 +421,13 @@ export async function PATCH(
       );
     }
 
-    const contentLength = Number(
-      request.headers.get(
-        "content-length"
-      ) || 0
-    );
+    const contentLength =
+      Number(
+        request.headers.get(
+          "content-length"
+        ) ||
+          0
+      );
 
     if (
       Number.isFinite(
@@ -297,15 +445,22 @@ export async function PATCH(
       );
     }
 
-    const { id } =
+    const {
+      id,
+    } =
       await params;
 
     const orderId =
-      normalizeText(id, 100);
+      normalizeText(
+        id,
+        100
+      );
 
     if (
       !orderId ||
-      !isValidOrderId(orderId)
+      !isValidOrderId(
+        orderId
+      )
     ) {
       return jsonResponse(
         {
@@ -316,7 +471,8 @@ export async function PATCH(
       );
     }
 
-    let body: UpdateOrderBody;
+    let body:
+      UpdateOrderBody;
 
     try {
       const rawBody =
@@ -335,9 +491,10 @@ export async function PATCH(
         );
       }
 
-      body = JSON.parse(
-        rawBody
-      ) as UpdateOrderBody;
+      body =
+        JSON.parse(
+          rawBody
+        ) as UpdateOrderBody;
     } catch {
       return jsonResponse(
         {
@@ -365,22 +522,39 @@ export async function PATCH(
     const nextStatus =
       body.status;
 
+    /*
+     * =====================================================
+     * PEDIDO ATUAL
+     * =====================================================
+     */
+
     const existingOrder =
       await prisma.order.findUnique({
         where: {
-          id: orderId,
+          id:
+            orderId,
         },
 
         select: {
-          id: true,
-          status: true,
-          trackingCode: true,
-          trackingUrl: true,
-          carrier: true,
+          id:
+            true,
+
+          status:
+            true,
+
+          trackingCode:
+            true,
+
+          trackingUrl:
+            true,
+
+          carrier:
+            true,
 
           payment: {
             select: {
-              status: true,
+              status:
+                true,
             },
           },
         },
@@ -417,15 +591,15 @@ export async function PATCH(
     }
 
     /*
-     * Um pedido somente pode entrar em
-     * preparação se o pagamento estiver
-     * aprovado no banco.
+     * Um pedido somente entra em preparação
+     * se o pagamento estiver aprovado.
      */
     if (
       nextStatus ===
         "PROCESSING" &&
       existingOrder.payment
-        ?.status !== "APPROVED"
+        ?.status !==
+        "APPROVED"
     ) {
       return jsonResponse(
         {
@@ -437,15 +611,15 @@ export async function PATCH(
     }
 
     /*
-     * Cancelar um pedido pago exige antes
-     * um fluxo real de cancelamento ou
-     * reembolso no Mercado Pago.
+     * Pedido pago exige um fluxo real de
+     * cancelamento ou reembolso no provedor.
      */
     if (
       nextStatus ===
         "CANCELED" &&
       existingOrder.payment
-        ?.status === "APPROVED"
+        ?.status ===
+        "APPROVED"
     ) {
       return jsonResponse(
         {
@@ -455,6 +629,12 @@ export async function PATCH(
         409
       );
     }
+
+    /*
+     * =====================================================
+     * RASTREAMENTO
+     * =====================================================
+     */
 
     const hasTrackingCode =
       Object.prototype.hasOwnProperty.call(
@@ -476,8 +656,6 @@ export async function PATCH(
 
     /*
      * Campos omitidos são preservados.
-     * Somente valores realmente enviados
-     * pelo painel são substituídos.
      */
     const trackingCode =
       hasTrackingCode
@@ -524,10 +702,12 @@ export async function PATCH(
     }
 
     if (
-      (nextStatus ===
-        "SHIPPED" ||
+      (
         nextStatus ===
-          "OUT_FOR_DELIVERY") &&
+          "SHIPPED" ||
+        nextStatus ===
+          "OUT_FOR_DELIVERY"
+      ) &&
       !trackingCode
     ) {
       return jsonResponse(
@@ -553,8 +733,12 @@ export async function PATCH(
       !customMessage
     ) {
       return jsonResponse({
-        success: true,
-        updated: false,
+        success:
+          true,
+
+        updated:
+          false,
+
         message:
           "Nenhuma alteração foi identificada.",
       });
@@ -566,76 +750,200 @@ export async function PATCH(
         nextStatus
       );
 
+    /*
+     * =====================================================
+     * ATUALIZAÇÃO ATÔMICA
+     * =====================================================
+     */
+
     try {
       const order =
-        await prisma.order.update({
-          /*
-           * A condição com o status atual
-           * evita sobrescrever uma atualização
-           * concorrente do webhook.
-           */
-          where: {
-            id: orderId,
-            status:
-              existingOrder.status,
-          },
+        await prisma.$transaction(
+          async (
+            transaction
+          ) => {
+            /*
+             * A condição com o status atual impede
+             * sobrescrever uma alteração concorrente.
+             */
+            const updatedOrder =
+              await transaction.order.update({
+                where: {
+                  id:
+                    orderId,
 
-          data: {
-            status:
-              nextStatus,
+                  status:
+                    existingOrder.status,
+                },
 
-            trackingCode,
-            trackingUrl,
-            carrier,
+                data: {
+                  status:
+                    nextStatus,
 
-            history:
-              statusChanged ||
-              customMessage
-                ? {
-                    create: {
+                  trackingCode,
+
+                  trackingUrl,
+
+                  carrier,
+
+                  history:
+                    statusChanged ||
+                    customMessage
+                      ? {
+                          create: {
+                            status:
+                              nextStatus,
+
+                            title:
+                              statusTitles[
+                                nextStatus
+                              ],
+
+                            message:
+                              historyMessage,
+                          },
+                        }
+                      : undefined,
+                },
+
+                select: {
+                  id:
+                    true,
+
+                  status:
+                    true,
+
+                  trackingCode:
+                    true,
+
+                  trackingUrl:
+                    true,
+
+                  carrier:
+                    true,
+
+                  updatedAt:
+                    true,
+
+                  history: {
+                    orderBy: {
+                      createdAt:
+                        "desc",
+                    },
+
+                    select: {
+                      id:
+                        true,
+
                       status:
-                        nextStatus,
+                        true,
 
                       title:
-                        statusTitles[
-                          nextStatus
-                        ],
+                        true,
 
                       message:
-                        historyMessage,
+                        true,
+
+                      createdAt:
+                        true,
                     },
-                  }
-                : undefined,
-          },
+                  },
+                },
+              });
 
-          select: {
-            id: true,
-            status: true,
-            trackingCode: true,
-            trackingUrl: true,
-            carrier: true,
-            updatedAt: true,
+            /*
+             * Cancelamento e devolução representam
+             * a liberação definitiva das unidades.
+             *
+             * Somente reservas existentes serão
+             * devolvidas e registradas.
+             */
+            if (
+              statusChanged &&
+              (
+ (
+                nextStatus ===
+                  "CANCELED" ||
+                nextStatus ===
+                  "RETURNED"
+              )
 
-            history: {
-              orderBy: {
-                createdAt:
-                  "desc",
+            )
+          )
+            {
+              await restoreOrderReservedStock({
+                transaction,
+
+                orderId,
+
+                actorId:
+                  session.userId,
+
+                reason:
+                  nextStatus ===
+                  "CANCELED"
+                    ? "Pedido cancelado manualmente"
+                    : "Pedido devolvido",
+
+                note:
+                  historyMessage,
+              });
+            }
+
+            /*
+             * Auditoria administrativa.
+             *
+             * Não incluímos informações pessoais,
+             * credenciais, cookies ou tokens.
+             */
+            await transaction.adminAuditLog.create({
+              data: {
+                actorId:
+                  session.userId,
+
+                module:
+                  "ORDERS",
+
+                action:
+                  "ORDER_UPDATED",
+
+                entityType:
+                  "ORDER",
+
+                entityId:
+                  orderId,
+
+                changes: {
+                  previousStatus:
+                    existingOrder.status,
+
+                  nextStatus,
+
+                  trackingChanged,
+
+                  stockRestored:
+                    statusChanged &&
+                    (
+                      nextStatus ===
+                        "CANCELED" ||
+                      nextStatus ===
+                        "RETURNED"
+                    ),
+                },
               },
+            });
 
-              select: {
-                id: true,
-                status: true,
-                title: true,
-                message: true,
-                createdAt: true,
-              },
-            },
-          },
-        });
+            return updatedOrder;
+          }
+        );
 
       return jsonResponse({
-        success: true,
-        updated: true,
+        success:
+          true,
+
+        updated:
+          true,
+
         order,
       });
     } catch (error) {
@@ -656,11 +964,27 @@ export async function PATCH(
       throw error;
     }
   } catch (error) {
+    const authorizationResponse =
+      getAuthorizationResponse(
+        error
+      );
+
+    if (
+      authorizationResponse
+    ) {
+      return authorizationResponse;
+    }
+
+    /*
+     * Não imprimimos conteúdo da requisição,
+     * dados do pedido, cliente ou pagamento.
+     */
     console.error(
       "Erro ao atualizar pedido:",
-      error instanceof Error
-        ? error.message
-        : "Erro desconhecido."
+      error instanceof
+        Error
+        ? error.name
+        : "UnknownError"
     );
 
     return jsonResponse(

@@ -1,4 +1,7 @@
-import { NextResponse } from "next/server";
+import {
+  NextResponse,
+} from "next/server";
+
 import {
   InvalidWebhookSignatureError,
   MercadoPagoConfig,
@@ -6,20 +9,39 @@ import {
   WebhookSignatureValidator,
 } from "mercadopago";
 
-import { prisma } from "@/lib/prisma";
+import {
+  restoreOrderReservedStock,
+} from "@/lib/orders/restoreOrderStock";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+import {
+  prisma,
+} from "@/lib/prisma";
+
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
 
 type MercadoPagoWebhookBody = {
-  id?: string | number;
+  id?:
+    | string
+    | number;
+
   type?: string;
   action?: string;
   api_version?: string;
-  application_id?: string | number;
+
+  application_id?:
+    | string
+    | number;
+
   date_created?: string;
   live_mode?: boolean;
-  user_id?: string | number;
+
+  user_id?:
+    | string
+    | number;
 
   data?: {
     id?: string;
@@ -48,9 +70,17 @@ type DatabaseOrderStatus =
   | "RETURNED";
 
 function normalizeStatus(
-  status: string | null | undefined
+  status:
+    | string
+    | null
+    | undefined
 ): string {
-  return status?.trim().toLowerCase() || "";
+  return (
+    status
+      ?.trim()
+      .toLowerCase() ||
+    ""
+  );
 }
 
 function getPaymentStatus(
@@ -84,28 +114,40 @@ function getOrderStatus(
   mercadoPagoOrderStatus: string
 ): DatabaseOrderStatus {
   if (
-    paymentStatus === "approved" ||
-    paymentStatus === "processed" ||
-    mercadoPagoOrderStatus === "processed"
+    paymentStatus ===
+      "approved" ||
+    paymentStatus ===
+      "processed" ||
+    mercadoPagoOrderStatus ===
+      "processed"
   ) {
     return "PAID";
   }
 
   if (
-    paymentStatus === "refunded" ||
-    paymentStatus === "charged_back" ||
-    mercadoPagoOrderStatus === "refunded"
+    paymentStatus ===
+      "refunded" ||
+    paymentStatus ===
+      "charged_back" ||
+    mercadoPagoOrderStatus ===
+      "refunded"
   ) {
     return "REFUNDED";
   }
 
   if (
-    paymentStatus === "cancelled" ||
-    paymentStatus === "canceled" ||
-    paymentStatus === "expired" ||
-    mercadoPagoOrderStatus === "cancelled" ||
-    mercadoPagoOrderStatus === "canceled" ||
-    mercadoPagoOrderStatus === "expired"
+    paymentStatus ===
+      "cancelled" ||
+    paymentStatus ===
+      "canceled" ||
+    paymentStatus ===
+      "expired" ||
+    mercadoPagoOrderStatus ===
+      "cancelled" ||
+    mercadoPagoOrderStatus ===
+      "canceled" ||
+    mercadoPagoOrderStatus ===
+      "expired"
   ) {
     return "CANCELED";
   }
@@ -114,29 +156,40 @@ function getOrderStatus(
 }
 
 function getHistoryContent(
-  status: DatabaseOrderStatus,
-  statusDetail: string | null
+  status:
+    DatabaseOrderStatus,
+
+  statusDetail:
+    | string
+    | null
 ) {
   switch (status) {
     case "PAID":
       return {
-        title: "Pagamento confirmado",
+        title:
+          "Pagamento confirmado",
+
         message:
           "O pagamento foi confirmado pelo Mercado Pago.",
       };
 
     case "REFUNDED":
       return {
-        title: "Pagamento reembolsado",
+        title:
+          "Pagamento reembolsado",
+
         message:
           "O pagamento foi reembolsado pelo Mercado Pago.",
       };
 
     case "CANCELED":
       return {
-        title: "Pagamento cancelado",
+        title:
+          "Pagamento cancelado",
+
         message:
-          statusDetail === "expired"
+          statusDetail ===
+          "expired"
             ? "O prazo para pagamento expirou."
             : "O pagamento foi cancelado.",
       };
@@ -144,10 +197,13 @@ function getHistoryContent(
     case "PENDING":
     default:
       return {
-        title: "Pagamento pendente",
-        message: statusDetail
-          ? `O pagamento está sendo processado: ${statusDetail}.`
-          : "O Mercado Pago ainda está processando o pagamento.",
+        title:
+          "Pagamento pendente",
+
+        message:
+          statusDetail
+            ? `O pagamento está sendo processado: ${statusDetail}.`
+            : "O Mercado Pago ainda está processando o pagamento.",
       };
   }
 }
@@ -164,37 +220,71 @@ function isProtectedOrderStatus(
     "CANCELED",
     "REFUNDED",
     "RETURNED",
-  ].includes(status);
+  ].includes(
+    status
+  );
 }
 
-export async function POST(request: Request) {
-  const requestUrl = new URL(request.url);
+function isRecordNotFoundError(
+  error: unknown
+) {
+  return (
+    typeof error ===
+      "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code ===
+      "P2025"
+  );
+}
+
+export async function POST(
+  request: Request
+) {
+  const requestUrl =
+    new URL(
+      request.url
+    );
 
   /*
-   * O ID usado na assinatura deve vir do
-   * parâmetro data.id da URL.
+   * O identificador usado para validar a
+   * assinatura vem exclusivamente da URL.
    */
   const queryDataId =
-    requestUrl.searchParams.get("data.id");
+    requestUrl.searchParams.get(
+      "data.id"
+    );
 
   const notificationType =
-    requestUrl.searchParams.get("type");
+    requestUrl.searchParams.get(
+      "type"
+    );
 
   const xSignature =
-    request.headers.get("x-signature");
+    request.headers.get(
+      "x-signature"
+    );
 
   const xRequestId =
-    request.headers.get("x-request-id");
+    request.headers.get(
+      "x-request-id"
+    );
 
   try {
     const webhookSecret =
-      process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim();
+      process.env
+        .MERCADO_PAGO_WEBHOOK_SECRET
+        ?.trim();
 
     const accessToken =
-      process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
+      process.env
+        .MERCADO_PAGO_ACCESS_TOKEN
+        ?.trim();
 
     const isTestMode =
-      process.env.MERCADO_PAGO_TEST_MODE === "true";
+      process.env
+        .MERCADO_PAGO_TEST_MODE ===
+      "true";
 
     if (!webhookSecret) {
       console.error(
@@ -203,10 +293,12 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         {
-          error: "Webhook não configurado.",
+          error:
+            "Webhook não configurado.",
         },
         {
-          status: 500,
+          status:
+            500,
         }
       );
     }
@@ -218,10 +310,12 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         {
-          error: "Mercado Pago não configurado.",
+          error:
+            "Mercado Pago não configurado.",
         },
         {
-          status: 500,
+          status:
+            500,
         }
       );
     }
@@ -229,54 +323,66 @@ export async function POST(request: Request) {
     if (!queryDataId) {
       return NextResponse.json(
         {
-          error: "data.id não informado.",
+          error:
+            "data.id não informado.",
         },
         {
-          status: 400,
+          status:
+            400,
         }
       );
     }
 
-    if (!xSignature || !xRequestId) {
+    if (
+      !xSignature ||
+      !xRequestId
+    ) {
       return NextResponse.json(
         {
           error:
             "Cabeçalhos de autenticação não informados.",
         },
         {
-          status: 401,
+          status:
+            401,
         }
       );
     }
 
     /*
-     * Não transforme queryDataId em minúsculas.
+     * Não transformamos queryDataId em minúsculas.
      *
-     * A partir do SDK 3.2, o Mercado Pago
-     * preserva corretamente letras maiúsculas
-     * e minúsculas na assinatura.
+     * O valor precisa permanecer exatamente igual
+     * ao utilizado pelo Mercado Pago na assinatura.
      */
     WebhookSignatureValidator.validate({
       xSignature,
+
       xRequestId,
-      dataId: queryDataId,
-      secret: webhookSecret,
+
+      dataId:
+        queryDataId,
+
+      secret:
+        webhookSecret,
     });
 
-    let body: MercadoPagoWebhookBody = {};
+    let body:
+      MercadoPagoWebhookBody =
+      {};
 
     try {
       body =
         (await request.json()) as MercadoPagoWebhookBody;
     } catch {
       /*
-       * Algumas notificações podem ter corpo
-       * vazio. O ID principal já foi recebido
-       * e validado pela URL.
+       * Algumas notificações podem possuir
+       * corpo vazio. A URL já foi validada.
        */
     }
 
-    const bodyDataId = body.data?.id;
+    const bodyDataId =
+      body.data?.id;
 
     /*
      * Impede que um ID diferente seja inserido
@@ -284,45 +390,55 @@ export async function POST(request: Request) {
      */
     if (
       bodyDataId &&
-      bodyDataId !== queryDataId
+      bodyDataId !==
+        queryDataId
     ) {
       console.error(
         "Webhook com IDs diferentes:",
         {
           queryDataId,
+
           bodyDataId,
-          requestId: xRequestId,
+
+          requestId:
+            xRequestId,
         }
       );
 
       return NextResponse.json(
         {
-          error: "Identificador inconsistente.",
+          error:
+            "Identificador inconsistente.",
         },
         {
-          status: 400,
+          status:
+            400,
         }
       );
     }
 
     const eventType =
-      body.type || notificationType;
+      body.type ||
+      notificationType;
 
     /*
-     * Somente notificações de Orders são
-     * processadas nesta rota.
-     *
-     * Outros eventos retornam 200 para evitar
-     * novas tentativas desnecessárias.
+     * Esta rota processa somente notificações
+     * relacionadas às Orders do Mercado Pago.
      */
     if (
       eventType &&
-      eventType !== "order"
+      eventType !==
+        "order"
     ) {
       return NextResponse.json({
-        received: true,
-        ignored: true,
-        type: eventType,
+        received:
+          true,
+
+        ignored:
+          true,
+
+        type:
+          eventType,
       });
     }
 
@@ -331,8 +447,11 @@ export async function POST(request: Request) {
         accessToken,
 
         options: {
-          timeout: 10000,
-          testToken: isTestMode,
+          timeout:
+            10_000,
+
+          testToken:
+            isTestMode,
         },
       });
 
@@ -342,26 +461,32 @@ export async function POST(request: Request) {
       );
 
     /*
-     * O status recebido no corpo não é usado
-     * diretamente.
+     * Não confiamos no status enviado no corpo.
      *
-     * Consultamos a Order na API oficial do
-     * Mercado Pago depois de validar a assinatura.
+     * Consultamos novamente a Order diretamente
+     * na API oficial do Mercado Pago.
      */
     const mercadoPagoResponse =
       await mercadoPagoOrder.get({
-        id: queryDataId,
+        id:
+          queryDataId,
       });
 
     const externalReference =
-      mercadoPagoResponse.external_reference;
+      mercadoPagoResponse
+        .external_reference;
 
-    if (!externalReference) {
+    if (
+      !externalReference
+    ) {
       console.error(
         "Ordem do Mercado Pago sem external_reference:",
         {
-          mercadoPagoOrderId: queryDataId,
-          requestId: xRequestId,
+          mercadoPagoOrderId:
+            queryDataId,
+
+          requestId:
+            xRequestId,
         }
       );
 
@@ -371,65 +496,88 @@ export async function POST(request: Request) {
             "Ordem sem referência interna.",
         },
         {
-          status: 422,
+          status:
+            422,
         }
       );
     }
 
+    /*
+     * O pedido é carregado pelo external_reference
+     * confirmado diretamente pelo Mercado Pago.
+     */
     const order =
       await prisma.order.findUnique({
         where: {
-          id: externalReference,
+          id:
+            externalReference,
         },
 
         include: {
-          payment: true,
+          payment:
+            true,
         },
       });
 
     if (!order) {
       /*
        * A Order pode pertencer a outro sistema
-       * conectado à mesma conta.
+       * conectado à mesma conta do Mercado Pago.
        *
-       * Retornamos 200 para confirmar o
-       * recebimento sem alterar o banco.
+       * Confirmamos o recebimento sem modificar
+       * nenhum pedido local.
        */
       console.warn(
         "Pedido local não encontrado:",
         {
           externalReference,
-          mercadoPagoOrderId: queryDataId,
-          requestId: xRequestId,
+
+          mercadoPagoOrderId:
+            queryDataId,
+
+          requestId:
+            xRequestId,
         }
       );
 
       return NextResponse.json({
-        received: true,
-        ignored: true,
-        reason: "Pedido local não encontrado.",
+        received:
+          true,
+
+        ignored:
+          true,
+
+        reason:
+          "Pedido local não encontrado.",
       });
     }
 
     /*
-     * Garante que a Order recebida pertence
-     * realmente ao pagamento salvo no pedido.
+     * Quando o pedido já possui uma Order do Mercado
+     * Pago salva, o identificador deve corresponder.
      */
     if (
-      order.payment?.mercadoPagoPreferenceId &&
-      order.payment.mercadoPagoPreferenceId !==
+      order.payment
+        ?.mercadoPagoPreferenceId &&
+      order.payment
+        .mercadoPagoPreferenceId !==
         queryDataId
     ) {
       console.error(
         "Ordem do Mercado Pago incompatível:",
         {
-          orderId: order.id,
+          orderId:
+            order.id,
+
           receivedMercadoPagoOrderId:
             queryDataId,
+
           savedMercadoPagoOrderId:
             order.payment
               .mercadoPagoPreferenceId,
-          requestId: xRequestId,
+
+          requestId:
+            xRequestId,
         }
       );
 
@@ -439,13 +587,15 @@ export async function POST(request: Request) {
             "Ordem não corresponde ao pedido.",
         },
         {
-          status: 409,
+          status:
+            409,
         }
       );
     }
 
     const paymentResponse =
-      mercadoPagoResponse.transactions
+      mercadoPagoResponse
+        .transactions
         ?.payments?.[0];
 
     const mercadoPagoOrderStatus =
@@ -455,7 +605,8 @@ export async function POST(request: Request) {
 
     const paymentStatus =
       normalizeStatus(
-        paymentResponse?.status
+        paymentResponse
+          ?.status
       );
 
     const effectiveStatus =
@@ -464,12 +615,16 @@ export async function POST(request: Request) {
       "pending";
 
     const paymentStatusDetail =
-      paymentResponse?.status_detail ||
-      mercadoPagoResponse.status_detail ||
+      paymentResponse
+        ?.status_detail ||
+      mercadoPagoResponse
+        .status_detail ||
       null;
 
     let databasePaymentStatus =
-      getPaymentStatus(effectiveStatus);
+      getPaymentStatus(
+        effectiveStatus
+      );
 
     let databaseOrderStatus =
       getOrderStatus(
@@ -478,70 +633,102 @@ export async function POST(request: Request) {
       );
 
     /*
-     * Uma notificação atrasada ou pendente
-     * não pode rebaixar um pagamento aprovado.
+     * Uma notificação atrasada, recusada ou cancelada
+     * não pode rebaixar um pagamento já aprovado.
+     *
+     * REFUNDED permanece permitido, pois representa
+     * um evento posterior válido.
      */
     if (
-      order.payment?.status === "APPROVED" &&
+      order.payment
+        ?.status ===
+        "APPROVED" &&
       (
-        databasePaymentStatus === "PENDING" ||
-        databasePaymentStatus === "REJECTED"
+        databasePaymentStatus ===
+          "PENDING" ||
+        databasePaymentStatus ===
+          "REJECTED" ||
+        databasePaymentStatus ===
+          "CANCELED"
       )
     ) {
-      databasePaymentStatus = "APPROVED";
+      databasePaymentStatus =
+        "APPROVED";
+
+      databaseOrderStatus =
+        order.status;
     }
 
     /*
      * Uma notificação pendente não pode rebaixar
-     * um pedido pago, enviado, entregue,
-     * cancelado ou reembolsado.
+     * um pedido pago, enviado, entregue, cancelado,
+     * devolvido ou reembolsado.
      */
     if (
-      databaseOrderStatus === "PENDING" &&
-      isProtectedOrderStatus(order.status)
+      databaseOrderStatus ===
+        "PENDING" &&
+      isProtectedOrderStatus(
+        order.status
+      )
     ) {
       databaseOrderStatus =
         order.status;
     }
 
     const paymentMethodId =
-      paymentResponse?.payment_method?.id ||
-      order.payment?.paymentMethod ||
+      paymentResponse
+        ?.payment_method
+        ?.id ||
+      order.payment
+        ?.paymentMethod ||
       null;
 
     const paymentId =
       paymentResponse?.id
-        ? String(paymentResponse.id)
+        ? String(
+            paymentResponse.id
+          )
         : order.payment
             ?.mercadoPagoPaymentId ||
           null;
 
     const ticketUrl =
-      paymentResponse?.payment_method
+      paymentResponse
+        ?.payment_method
         ?.ticket_url ||
-      order.payment?.paymentUrl ||
+      order.payment
+        ?.paymentUrl ||
       null;
 
     const orderStatusChanged =
-      order.status !== databaseOrderStatus;
+      order.status !==
+      databaseOrderStatus;
 
     const paymentStatusChanged =
-      order.payment?.status !==
+      order.payment
+        ?.status !==
       databasePaymentStatus;
 
     /*
-     * Confirma notificações repetidas sem
-     * criar históricos duplicados.
+     * Webhooks repetidos são confirmados sem
+     * gerar históricos ou devoluções duplicadas.
      */
     if (
       !orderStatusChanged &&
       !paymentStatusChanged
     ) {
       return NextResponse.json({
-        received: true,
-        updated: false,
-        orderId: order.id,
-        status: order.status,
+        received:
+          true,
+
+        updated:
+          false,
+
+        orderId:
+          order.id,
+
+        status:
+          order.status,
       });
     }
 
@@ -551,97 +738,210 @@ export async function POST(request: Request) {
         paymentStatusDetail
       );
 
-    await prisma.order.update({
-      where: {
-        id: order.id,
-      },
+    /*
+     * =====================================================
+     * ATUALIZAÇÃO ATÔMICA
+     * =====================================================
+     *
+     * Pedido, pagamento, histórico e eventual devolução
+     * de estoque são atualizados na mesma transação.
+     */
 
-      data: {
-        status: databaseOrderStatus,
+    try {
+      await prisma.$transaction(
+        async (
+          transaction
+        ) => {
+          /*
+           * A condição com o status que foi consultado
+           * impede sobrescrever atualização concorrente.
+           */
+          await transaction.order.update({
+            where: {
+              id:
+                order.id,
 
-        expiresAt:
-          databaseOrderStatus === "PAID"
-            ? null
-            : order.expiresAt,
-
-        payment: {
-          upsert: {
-            create: {
-              provider: "mercadopago",
-              status: databasePaymentStatus,
-
-              mercadoPagoPaymentId:
-                paymentId,
-
-              mercadoPagoPreferenceId:
-                queryDataId,
-
-              paymentMethod:
-                paymentMethodId,
-
-              paymentUrl:
-                ticketUrl,
+              status:
+                order.status,
             },
 
-            update: {
-              provider: "mercadopago",
-              status: databasePaymentStatus,
+            data: {
+              status:
+                databaseOrderStatus,
 
-              mercadoPagoPaymentId:
-                paymentId,
+              expiresAt:
+                databaseOrderStatus ===
+                "PAID"
+                  ? null
+                  : order.expiresAt,
 
-              mercadoPagoPreferenceId:
-                queryDataId,
+              payment: {
+                upsert: {
+                  create: {
+                    provider:
+                      "mercadopago",
 
-              paymentMethod:
-                paymentMethodId,
+                    status:
+                      databasePaymentStatus,
 
-              paymentUrl:
-                ticketUrl,
-            },
-          },
-        },
+                    mercadoPagoPaymentId:
+                      paymentId,
 
-        history:
-          orderStatusChanged
-            ? {
-                create: {
-                  status:
-                    databaseOrderStatus,
+                    mercadoPagoPreferenceId:
+                      queryDataId,
 
-                  title: history.title,
-                  message: history.message,
+                    paymentMethod:
+                      paymentMethodId,
+
+                    paymentUrl:
+                      ticketUrl,
+                  },
+
+                  update: {
+                    provider:
+                      "mercadopago",
+
+                    status:
+                      databasePaymentStatus,
+
+                    mercadoPagoPaymentId:
+                      paymentId,
+
+                    mercadoPagoPreferenceId:
+                      queryDataId,
+
+                    paymentMethod:
+                      paymentMethodId,
+
+                    paymentUrl:
+                      ticketUrl,
+                  },
                 },
-              }
-            : undefined,
-      },
-    });
+              },
 
+              history:
+                orderStatusChanged
+                  ? {
+                      create: {
+                        status:
+                          databaseOrderStatus,
+
+                        title:
+                          history.title,
+
+                        message:
+                          history.message,
+                      },
+                    }
+                  : undefined,
+            },
+          });
+
+          /*
+           * O estoque é devolvido somente quando:
+           *
+           * - o status realmente mudou;
+           * - o novo status é CANCELED;
+           * - existe ORDER_RESERVATION;
+           * - ainda não existe ORDER_RESTORE.
+           */
+          if (
+            orderStatusChanged &&
+            databaseOrderStatus ===
+              "CANCELED"
+          ) {
+            await restoreOrderReservedStock({
+              transaction,
+
+              orderId:
+                order.id,
+
+              actorId:
+                null,
+
+              reason:
+                "Pagamento cancelado ou recusado",
+
+              note:
+                paymentStatusDetail ||
+                "Cancelamento confirmado pelo Mercado Pago.",
+            });
+          }
+        }
+      );
+    } catch (error) {
+      /*
+       * Outra execução atualizou o pedido antes
+       * desta transação. Retornamos erro para que
+       * o Mercado Pago envie novamente o webhook.
+       */
+      if (
+        isRecordNotFoundError(
+          error
+        )
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Pedido atualizado por outro processo.",
+          },
+          {
+            status:
+              409,
+          }
+        );
+      }
+
+      throw error;
+    }
+
+    /*
+     * Não registramos CPF, endereço, token,
+     * credenciais ou conteúdo integral do pagamento.
+     */
     console.log(
       "Webhook do Mercado Pago processado:",
       {
-        requestId: xRequestId,
-        orderId: order.id,
+        requestId:
+          xRequestId,
+
+        orderId:
+          order.id,
+
         mercadoPagoOrderId:
           queryDataId,
+
         previousOrderStatus:
           order.status,
+
         newOrderStatus:
           databaseOrderStatus,
+
         previousPaymentStatus:
-          order.payment?.status || null,
+          order.payment
+            ?.status ||
+          null,
+
         newPaymentStatus:
           databasePaymentStatus,
+
         statusDetail:
           paymentStatusDetail,
       }
     );
 
     return NextResponse.json({
-      received: true,
-      updated: true,
-      orderId: order.id,
-      status: databaseOrderStatus,
+      received:
+        true,
+
+      updated:
+        true,
+
+      orderId:
+        order.id,
+
+      status:
+        databaseOrderStatus,
     });
   } catch (error) {
     if (
@@ -651,46 +951,68 @@ export async function POST(request: Request) {
       console.error(
         "Assinatura inválida no webhook do Mercado Pago:",
         {
-          reason: error.reason,
-          requestId: xRequestId,
+          reason:
+            error.reason,
+
+          requestId:
+            xRequestId,
+
           hasSignature:
-            Boolean(xSignature),
+            Boolean(
+              xSignature
+            ),
+
           hasRequestId:
-            Boolean(xRequestId),
+            Boolean(
+              xRequestId
+            ),
+
           hasDataId:
-            Boolean(queryDataId),
+            Boolean(
+              queryDataId
+            ),
         }
       );
 
       return NextResponse.json(
         {
-          error: "Assinatura inválida.",
-          reason: error.reason,
+          error:
+            "Assinatura inválida.",
+
+          reason:
+            error.reason,
         },
         {
-          status: 401,
+          status:
+            401,
         }
       );
     }
 
     console.error(
-  "Erro ao processar webhook do Mercado Pago:",
-  {
-    errorType:
-      error instanceof Error
-        ? error.name
-        : "UnknownError",
+      "Erro ao processar webhook do Mercado Pago:",
+      {
+        errorType:
+          error instanceof
+            Error
+            ? error.name
+            : "UnknownError",
 
-    requestId:
-      xRequestId || null,
+        requestId:
+          xRequestId ||
+          null,
 
-    hasSignature:
-      Boolean(xSignature),
+        hasSignature:
+          Boolean(
+            xSignature
+          ),
 
-    hasDataId:
-      Boolean(queryDataId),
-  }
-);
+        hasDataId:
+          Boolean(
+            queryDataId
+          ),
+      }
+    );
 
     /*
      * O Mercado Pago tentará enviar novamente
@@ -702,7 +1024,8 @@ export async function POST(request: Request) {
           "Erro ao processar webhook.",
       },
       {
-        status: 500,
+        status:
+          500,
       }
     );
   }
@@ -710,7 +1033,10 @@ export async function POST(request: Request) {
 
 export async function GET() {
   return NextResponse.json({
-    service: "Mercado Pago webhook",
-    status: "online",
+    service:
+      "Mercado Pago webhook",
+
+    status:
+      "online",
   });
 }

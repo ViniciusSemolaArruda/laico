@@ -753,13 +753,6 @@ export default function EditProductForm({
         religions:
           selectedReligions,
 
-        stock:
-          String(
-            formData.get(
-              "stock"
-            ) ?? ""
-          ),
-
         minimumStock:
           String(
             formData.get(
@@ -1278,17 +1271,22 @@ export default function EditProductForm({
             }
           />
 
-          <Field
-            label="Estoque *"
-            name="stock"
-            type="number"
-            min="0"
-            step="1"
-            required
-            defaultValue={
-              initialProduct.stock
-            }
-          />
+          <div>
+            <ReadOnlyField
+              label="Estoque atual"
+              value={
+                initialProduct.stock
+              }
+            />
+
+            <p className="mt-2 text-xs leading-5 text-neutral-500">
+              Para alterar a quantidade,
+              utilize o botão Estoque na
+              listagem de produtos. Assim,
+              a movimentação fica registrada
+              no histórico.
+            </p>
+          </div>
 
           <Field
             label="Estoque mínimo"

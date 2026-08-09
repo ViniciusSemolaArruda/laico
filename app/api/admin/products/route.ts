@@ -1210,6 +1210,47 @@ export async function POST(
               });
 
             /*
+             * Estoque inicial.
+             *
+             * O produto nasce com o saldo informado no cadastro,
+             * e a primeira entrada é registrada dentro da mesma
+             * transação. Se o saldo inicial for zero, não criamos
+             * uma movimentação sem quantidade.
+             */
+
+            if (
+              stock > 0
+            ) {
+              await transaction.productStockMovement.create({
+                data: {
+                  productId:
+                    createdProduct.id,
+
+                  actorId:
+                    session.userId,
+
+                  type:
+                    "ENTRY",
+
+                  quantity:
+                    stock,
+
+                  previousStock:
+                    0,
+
+                  newStock:
+                    stock,
+
+                  reason:
+                    "Estoque inicial do produto",
+
+                  note:
+                    "Saldo informado durante o cadastro do produto.",
+                },
+              });
+            }
+
+            /*
              * Auditoria dentro da mesma transação.
              */
 
@@ -1241,6 +1282,9 @@ export async function POST(
                     createdProduct.sku,
 
                   stock,
+
+                  initialStockMovementCreated:
+                    stock > 0,
 
                   price:
                     price.toFixed(
