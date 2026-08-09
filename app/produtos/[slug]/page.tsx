@@ -1,21 +1,38 @@
-// app/produtos/[slug]/page.tsx
+import type {
+  Metadata,
+} from "next";
 
-import Header from "../../../components/Header/Header";
-import Footer from "../../../components/Footer";
-import AddToCartButton from "../../../components/AddToCartButton";
-import { prisma } from "@/lib/prisma";
+import Link from "next/link";
+
 import {
-  Heart,
-  Truck,
-  CreditCard,
-  RotateCcw,
+  notFound,
+} from "next/navigation";
+
+import type {
+  ReactNode,
+} from "react";
+
+import {
   CheckCircle,
+  CreditCard,
   Home,
   MessageCircle,
+  RotateCcw,
   ShieldCheck,
+  Truck,
 } from "lucide-react";
-import Link from "next/link";
-import { notFound } from "next/navigation";
+
+import AddToCartButton from "@/components/AddToCartButton";
+import Footer from "@/components/Footer";
+import Header from "@/components/Header/Header";
+import ProductGallery from "@/components/products/ProductGallery";
+
+import {
+  prisma,
+} from "@/lib/prisma";
+
+export const dynamic =
+  "force-dynamic";
 
 type Props = {
   params: Promise<{
@@ -23,233 +40,981 @@ type Props = {
   }>;
 };
 
-function formatPrice(value: unknown) {
-  return Number(value).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+function normalizeSlug(
+  value: unknown
+) {
+  if (
+    typeof value !==
+    "string"
+  ) {
+    return "";
+  }
+
+  return value
+    .trim()
+    .toLowerCase()
+    .slice(
+      0,
+      180
+    );
 }
 
-export default async function ProductPage({ params }: Props) {
-  const { slug } = await params;
+function isValidSlug(
+  slug: string
+) {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(
+    slug
+  );
+}
 
-  const product = await prisma.product.findUnique({
-    where: { slug },
-  });
+function formatPrice(
+  value: unknown
+) {
+  return Number(
+    value
+  ).toLocaleString(
+    "pt-BR",
+    {
+      style:
+        "currency",
+
+      currency:
+        "BRL",
+    }
+  );
+}
+
+function formatMeasurement(
+  value: unknown,
+  suffix: string
+) {
+  const number =
+    Number(
+      value
+    );
+
+  if (
+    !Number.isFinite(
+      number
+    ) ||
+    number <=
+      0
+  ) {
+    return null;
+  }
+
+  return `${number.toLocaleString(
+    "pt-BR",
+    {
+      maximumFractionDigits:
+        3,
+    }
+  )} ${suffix}`;
+}
+
+/*
+ * =========================================================
+ * SEO
+ * =========================================================
+ */
+
+export async function generateMetadata({
+  params,
+}: Props): Promise<Metadata> {
+  const {
+    slug: rawSlug,
+  } =
+    await params;
+
+  const slug =
+    normalizeSlug(
+      rawSlug
+    );
+
+  if (
+    !slug ||
+    !isValidSlug(
+      slug
+    )
+  ) {
+    return {
+      title:
+        "Produto não encontrado",
+    };
+  }
+
+  const product =
+    await prisma.product.findFirst({
+      where: {
+        slug,
+
+        active:
+          true,
+
+        archivedAt:
+          null,
+      },
+
+      select: {
+        name:
+          true,
+
+        shortDescription:
+          true,
+
+        seoTitle:
+          true,
+
+        seoDescription:
+          true,
+
+        image:
+          true,
+
+        images: {
+          where: {
+            isPrimary:
+              true,
+          },
+
+          orderBy: {
+            position:
+              "asc",
+          },
+
+          take:
+            1,
+
+          select: {
+            url:
+              true,
+          },
+        },
+      },
+    });
+
+  if (!product) {
+    return {
+      title:
+        "Produto não encontrado",
+
+      robots: {
+        index:
+          false,
+
+        follow:
+          false,
+      },
+    };
+  }
+
+  const title =
+    product.seoTitle ||
+    product.name;
+
+  const description =
+    product.seoDescription ||
+    product.shortDescription ||
+    `Conheça ${product.name} na Laico.`;
+
+  const image =
+    product.images[
+      0
+    ]?.url ||
+    product.image;
+
+  return {
+    title,
+
+    description,
+
+    alternates: {
+      canonical:
+        `/produtos/${slug}`,
+    },
+
+    openGraph: {
+      title,
+
+      description,
+
+      type:
+        "website",
+
+      images:
+        image
+          ? [
+              {
+                url:
+                  image,
+
+                alt:
+                  product.name,
+              },
+            ]
+          : undefined,
+    },
+  };
+}
+
+/*
+ * =========================================================
+ * PÁGINA
+ * =========================================================
+ */
+
+export default async function ProductPage({
+  params,
+}: Props) {
+  const {
+    slug: rawSlug,
+  } =
+    await params;
+
+  const slug =
+    normalizeSlug(
+      rawSlug
+    );
+
+  if (
+    !slug ||
+    !isValidSlug(
+      slug
+    )
+  ) {
+    notFound();
+  }
+
+  /*
+   * Selecionamos somente os dados públicos.
+   *
+   * Custo e informações administrativas não
+   * são carregados nesta página.
+   */
+  const product =
+    await prisma.product.findFirst({
+      where: {
+        slug,
+
+        active:
+          true,
+
+        archivedAt:
+          null,
+      },
+
+      select: {
+        id:
+          true,
+
+        slug:
+          true,
+
+        sku:
+          true,
+
+        name:
+          true,
+
+        shortDescription:
+          true,
+
+        description:
+          true,
+
+        price:
+          true,
+
+        salePrice:
+          true,
+
+        image:
+          true,
+
+        religion:
+          true,
+
+        religions:
+          true,
+
+        category:
+          true,
+
+        stock:
+          true,
+
+        weight:
+          true,
+
+        height:
+          true,
+
+        width:
+          true,
+
+        length:
+          true,
+
+        images: {
+          orderBy: [
+            {
+              isPrimary:
+                "desc",
+            },
+
+            {
+              position:
+                "asc",
+            },
+          ],
+
+          select: {
+            id:
+              true,
+
+            url:
+              true,
+
+            alt:
+              true,
+          },
+        },
+      },
+    });
 
   if (!product) {
     notFound();
   }
 
-  const related = await prisma.product.findMany({
-    where: {
-      active: true,
-      category: product.category,
-      NOT: {
-        id: product.id,
+  /*
+   * GALERIA
+   */
+
+  const galleryImages =
+    product.images.length >
+    0
+      ? product.images
+      : product.image
+        ? [
+            {
+              id:
+                "legacy-image",
+
+              url:
+                product.image,
+
+              alt:
+                product.name,
+            },
+          ]
+        : [];
+
+  const primaryImage =
+    galleryImages[
+      0
+    ]?.url ||
+    product.image;
+
+  /*
+   * PREÇO
+   */
+
+  const normalPrice =
+    Number(
+      product.price
+    );
+
+  const possibleSalePrice =
+    product.salePrice ===
+    null
+      ? null
+      : Number(
+          product.salePrice
+        );
+
+  const promotionalPrice =
+    possibleSalePrice !==
+      null &&
+    Number.isFinite(
+      possibleSalePrice
+    ) &&
+    possibleSalePrice >
+      0 &&
+    possibleSalePrice <
+      normalPrice
+      ? possibleSalePrice
+      : null;
+
+  const hasPromotion =
+    promotionalPrice !==
+    null;
+
+  const currentPrice =
+    promotionalPrice ??
+    normalPrice;
+
+  const discount =
+    promotionalPrice !==
+    null
+      ? Math.round(
+          (
+            (
+              normalPrice -
+              promotionalPrice
+            ) /
+            normalPrice
+          ) *
+            100
+        )
+      : 0;
+
+  /*
+   * RELIGIÕES
+   */
+
+  const productReligions =
+    product.religions.length >
+    0
+      ? product.religions
+      : product.religion
+        ? [
+            product.religion,
+          ]
+        : [];
+
+  /*
+   * PRODUTOS RELACIONADOS
+   */
+
+  const related =
+    await prisma.product.findMany({
+      where: {
+        active:
+          true,
+
+        archivedAt:
+          null,
+
+        category:
+          product.category,
+
+        id: {
+          not:
+            product.id,
+        },
       },
-    },
-    take: 4,
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+
+      take:
+        4,
+
+      orderBy: [
+        {
+          featured:
+            "desc",
+        },
+
+        {
+          createdAt:
+            "desc",
+        },
+      ],
+
+      select: {
+        id:
+          true,
+
+        slug:
+          true,
+
+        name:
+          true,
+
+        image:
+          true,
+
+        price:
+          true,
+
+        salePrice:
+          true,
+
+        stock:
+          true,
+
+        images: {
+          where: {
+            isPrimary:
+              true,
+          },
+
+          orderBy: {
+            position:
+              "asc",
+          },
+
+          take:
+            1,
+
+          select: {
+            url:
+              true,
+          },
+        },
+      },
+    });
+
+  /*
+   * MEDIDAS
+   */
+
+  const measurements =
+    [
+      {
+        label:
+          "Peso",
+
+        value:
+          formatMeasurement(
+            product.weight,
+            "kg"
+          ),
+      },
+
+      {
+        label:
+          "Altura",
+
+        value:
+          formatMeasurement(
+            product.height,
+            "cm"
+          ),
+      },
+
+      {
+        label:
+          "Largura",
+
+        value:
+          formatMeasurement(
+            product.width,
+            "cm"
+          ),
+      },
+
+      {
+        label:
+          "Comprimento",
+
+        value:
+          formatMeasurement(
+            product.length,
+            "cm"
+          ),
+      },
+    ].filter(
+      (
+        item
+      ): item is {
+        label: string;
+        value: string;
+      } =>
+        Boolean(
+          item.value
+        )
+    );
 
   return (
-    <main className="min-h-screen bg-[#faf9f6]">
-      <Header />
+    <main className="min-h-screen bg-[#fffdf9]">
+      <Header
+        initialActiveMenu={
+          product.category
+        }
+      />
 
-      <section className="mx-auto max-w-[1370px] px-6 py-7">
-        <div className="mb-7 flex items-center gap-2 text-[13px] text-neutral-600">
-          <Home size={15} />
-          <Link href="/" className="hover:text-[#b98218]">
+      <section className="mx-auto max-w-[1370px] px-4 py-6 sm:px-6 sm:py-8">
+        {/* BREADCRUMB */}
+
+        <nav className="mb-6 flex min-w-0 flex-wrap items-center gap-2 text-xs text-neutral-600 sm:mb-8 sm:text-[13px]">
+          <Home
+            size={15}
+          />
+
+          <Link
+            href="/"
+            className="hover:text-[#b98218]"
+          >
             Início
           </Link>
-          <span>›</span>
-          <span>{product.category}</span>
-          <span>›</span>
-          <span className="font-semibold text-[#20170f]">{product.name}</span>
-        </div>
 
-        <div className="grid grid-cols-1 gap-7 lg:grid-cols-[590px_1fr_310px]">
-          <section className="flex h-[455px] items-center justify-center rounded-2xl border border-[#e8dcc2] bg-white shadow-sm">
-            <img
-              src={product.image}
-              alt={product.name}
-              className="max-h-[88%] max-w-[88%] object-contain"
-            />
-          </section>
+          <span>
+            ›
+          </span>
 
-          <section>
-            <span className="inline-flex rounded-full bg-[#fff8e8] px-3 py-1 text-xs font-bold text-[#b98218]">
-              {product.religion}
-            </span>
+          <Link
+            href={`/?categoria=${encodeURIComponent(
+              product.category
+            )}`}
+            className="hover:text-[#b98218]"
+          >
+            {
+              product.category
+            }
+          </Link>
 
-            <h1 className="mt-4 text-[34px] font-extrabold leading-tight text-[#20170f]">
-              {product.name}
+          <span>
+            ›
+          </span>
+
+          <span className="truncate font-semibold text-[#20170f]">
+            {
+              product.name
+            }
+          </span>
+        </nav>
+
+        {/* CONTEÚDO */}
+
+        <div className="grid grid-cols-1 gap-7 lg:grid-cols-2 xl:grid-cols-[minmax(0,560px)_minmax(0,1fr)_300px]">
+          {/* GALERIA */}
+
+          <ProductGallery
+            productName={
+              product.name
+            }
+            images={
+              galleryImages
+            }
+          />
+
+          {/* INFORMAÇÕES */}
+
+          <section className="min-w-0">
+            {/* RELIGIÕES */}
+
+            <div className="flex flex-wrap gap-2">
+              {productReligions.map(
+                (
+                  religion
+                ) => (
+                  <Link
+                    key={
+                      religion
+                    }
+                    href={`/?religiao=${encodeURIComponent(
+                      religion
+                    )}`}
+                    className="inline-flex rounded-full bg-[#fff8e8] px-3 py-1 text-xs font-bold text-[#b98218]"
+                  >
+                    {
+                      religion
+                    }
+                  </Link>
+                )
+              )}
+            </div>
+
+            <h1 className="mt-4 text-[28px] font-extrabold leading-tight text-[#20170f] sm:text-[34px]">
+              {
+                product.name
+              }
             </h1>
 
-            <p className="mt-2 text-[14px] text-neutral-500">
-              Categoria: {product.category}
-            </p>
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-neutral-500 sm:text-sm">
+              <span>
+                Categoria:{" "}
+                {
+                  product.category
+                }
+              </span>
 
-            <div className="mt-4 flex items-center gap-2">
-              <span className="text-[20px] text-[#ffc400]">★★★★★</span>
-              <span className="text-[13px] text-neutral-600">
-                Produto verificado
+              <span>
+                Cód:{" "}
+                {product.sku ||
+                  "—"}
               </span>
             </div>
 
-            <p className="mt-5 text-[34px] font-extrabold text-[#b98218]">
-              {formatPrice(product.price)}
-            </p>
+            {product.shortDescription && (
+              <p className="mt-5 text-[15px] leading-7 text-neutral-600">
+                {
+                  product.shortDescription
+                }
+              </p>
+            )}
 
-            <p className="text-[14px] text-neutral-600">
-              ou em até 6x sem juros
-            </p>
+            {/* PREÇO */}
 
-            <p className="mt-6 max-w-[560px] text-[15px] leading-7 text-neutral-700">
-              {product.description}
-            </p>
+            <div className="mt-6">
+              {hasPromotion && (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-neutral-500 line-through">
+                    {formatPrice(
+                      normalPrice
+                    )}
+                  </span>
 
-            <div className="mt-6 grid grid-cols-1 gap-3 text-[14px] text-neutral-700 sm:grid-cols-2">
-              <div className="rounded-xl border border-[#e8dcc2] bg-white p-4">
-                <strong className="block text-[#20170f]">Categoria</strong>
-                {product.category}
-              </div>
+                  <span className="rounded-full bg-[#e6007e] px-2.5 py-1 text-xs font-bold text-white">
+                    -
+                    {
+                      discount
+                    }
+                    %
+                  </span>
+                </div>
+              )}
 
-              <div className="rounded-xl border border-[#e8dcc2] bg-white p-4">
-                <strong className="block text-[#20170f]">Segmento</strong>
-                {product.religion}
-              </div>
+              <p className="mt-1 text-[32px] font-extrabold text-[#b98218] sm:text-[36px]">
+                {formatPrice(
+                  currentPrice
+                )}
+              </p>
 
-              <div className="rounded-xl border border-[#e8dcc2] bg-white p-4">
-                <strong className="block text-[#20170f]">Estoque</strong>
-                {product.stock} unidade(s)
-              </div>
-
-              <div className="rounded-xl border border-[#e8dcc2] bg-white p-4">
-                <strong className="block text-[#20170f]">Garantia</strong>
-                90 dias
-              </div>
+              <p className="text-sm text-neutral-600">
+                ou 6x de{" "}
+                {formatPrice(
+                  currentPrice /
+                    6
+                )}
+              </p>
             </div>
 
-            {product.stock > 0 ? (
-              <p className="mt-5 flex items-center gap-2 text-[14px] font-bold text-green-600">
-                <CheckCircle size={16} />
-                Em estoque e disponível para compra
+            {/* DESCRIÇÃO */}
+
+            <div className="mt-6 whitespace-pre-line text-[15px] leading-7 text-neutral-700">
+              {
+                product.description
+              }
+            </div>
+
+            {/* MEDIDAS */}
+
+            {measurements.length >
+              0 && (
+              <div className="mt-6 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                {measurements.map(
+                  (
+                    measurement
+                  ) => (
+                    <div
+                      key={
+                        measurement.label
+                      }
+                      className="rounded-xl border border-[#e8dcc2] bg-white p-3"
+                    >
+                      <strong className="block text-xs text-[#20170f]">
+                        {
+                          measurement.label
+                        }
+                      </strong>
+
+                      <span className="mt-1 block text-neutral-600">
+                        {
+                          measurement.value
+                        }
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+
+            {/* DISPONIBILIDADE */}
+
+            {product.stock >
+            0 ? (
+              <p className="mt-5 flex items-center gap-2 text-sm font-bold text-green-700">
+                <CheckCircle
+                  size={17}
+                />
+
+                Em estoque:{" "}
+                {
+                  product.stock
+                }{" "}
+                unidade(s)
               </p>
             ) : (
-              <p className="mt-5 text-[14px] font-bold text-red-600">
-                Produto indisponível no momento
+              <p className="mt-5 text-sm font-bold text-red-600">
+                Produto
+                indisponível
+                no momento
               </p>
             )}
           </section>
 
-          <aside className="h-fit rounded-2xl border border-[#e8dcc2] bg-white shadow-sm">
+          {/* COMPRA */}
+
+          <aside className="h-fit rounded-2xl border border-[#e8dcc2] bg-white shadow-sm lg:col-span-2 xl:col-span-1">
             <div className="border-b border-[#eee2cc] p-5">
               <AddToCartButton
                 product={{
-                  id: product.id,
-                  slug: product.slug,
-                  name: product.name,
-                  image: product.image,
-                  price: Number(product.price),
+                  id:
+                    product.id,
+
+                  slug:
+                    product.slug,
+
+                  name:
+                    product.name,
+
+                  image:
+                    primaryImage,
+
+                  price:
+                    currentPrice,
+
+                  stock:
+                    product.stock,
                 }}
               />
-
-              <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[#e8dcc2] py-3 text-[14px] font-bold text-neutral-600 hover:bg-[#faf9f6]">
-                <Heart size={17} />
-                Favoritar
-              </button>
             </div>
 
             <div className="space-y-5 p-5">
-              <div className="flex gap-3">
-                <Truck className="text-[#b98218]" />
-                <div>
-                  <p className="text-[13px] font-bold">
-                    Entrega para todo o Brasil
-                  </p>
-                  <p className="text-[12px] text-neutral-500">
-                    Envio rápido e seguro.
-                  </p>
-                </div>
-              </div>
+              <Benefit
+                icon={
+                  <Truck />
+                }
+                title="Entrega para todo o Brasil"
+                text="Envio acompanhado e seguro."
+              />
 
-              <div className="flex gap-3">
-                <CreditCard className="text-[#b98218]" />
-                <div>
-                  <p className="text-[13px] font-bold">Pagamento seguro</p>
-                  <p className="text-[12px] text-neutral-500">
-                    Pix, boleto e cartão.
-                  </p>
-                </div>
-              </div>
+              <Benefit
+                icon={
+                  <CreditCard />
+                }
+                title="Pagamento seguro"
+                text="Formas disponíveis no checkout."
+              />
 
-              <div className="flex gap-3">
-                <RotateCcw className="text-[#b98218]" />
-                <div>
-                  <p className="text-[13px] font-bold">Trocas e devoluções</p>
-                  <p className="text-[12px] text-neutral-500">
-                    7 dias após recebimento.
-                  </p>
-                </div>
-              </div>
+              <Benefit
+                icon={
+                  <RotateCcw />
+                }
+                title="Direito de arrependimento"
+                text="Consulte nossa política de devolução."
+              />
 
-              <div className="flex gap-3">
-                <ShieldCheck className="text-[#b98218]" />
-                <div>
-                  <p className="text-[13px] font-bold">Compra protegida</p>
-                  <p className="text-[12px] text-neutral-500">
-                    Ambiente seguro e pedido acompanhado.
-                  </p>
-                </div>
-              </div>
+              <Benefit
+                icon={
+                  <ShieldCheck />
+                }
+                title="Compra protegida"
+                text="Ambiente seguro e pedido acompanhado."
+              />
             </div>
           </aside>
         </div>
 
+        {/* RELACIONADOS */}
+
         <section className="mt-14">
-          <div className="mb-6 flex items-end justify-between">
-            <div>
-              <h2 className="text-[26px] font-extrabold text-[#20170f]">
-                Produtos relacionados
-              </h2>
-              <p className="text-sm text-neutral-500">
-                Outros produtos da mesma categoria
-              </p>
-            </div>
-          </div>
+          <h2 className="text-2xl font-extrabold text-[#20170f] sm:text-[26px]">
+            Produtos
+            relacionados
+          </h2>
 
-          <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
-            {related.map((item) => (
-              <Link
-                href={`/produtos/${item.slug}`}
-                key={item.id}
-                className="rounded-2xl border border-[#e8dcc2] bg-white p-4 transition hover:-translate-y-1 hover:shadow-lg"
-              >
-                <div className="flex h-[180px] items-center justify-center rounded-xl bg-[#faf9f6]">
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="max-h-[155px] object-contain"
-                  />
-                </div>
+          <p className="mt-1 text-sm text-neutral-500">
+            Outros
+            produtos da
+            mesma
+            categoria
+          </p>
 
-                <h3 className="mt-4 line-clamp-2 text-[14px] font-bold text-[#20170f]">
-                  {item.name}
-                </h3>
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-4">
+            {related.map(
+              (
+                item
+              ) => {
+                const relatedNormalPrice =
+                  Number(
+                    item.price
+                  );
 
-                <p className="mt-2 text-[18px] font-extrabold text-[#b98218]">
-                  {formatPrice(item.price)}
-                </p>
-              </Link>
-            ))}
+                const relatedSalePrice =
+                  item.salePrice ===
+                  null
+                    ? null
+                    : Number(
+                        item.salePrice
+                      );
 
-            {related.length === 0 && (
+                const relatedCurrentPrice =
+                  relatedSalePrice !==
+                    null &&
+                  relatedSalePrice >
+                    0 &&
+                  relatedSalePrice <
+                    relatedNormalPrice
+                    ? relatedSalePrice
+                    : relatedNormalPrice;
+
+                const relatedImage =
+                  item.images[
+                    0
+                  ]?.url ||
+                  item.image;
+
+                return (
+                  <Link
+                    href={`/produtos/${item.slug}`}
+                    key={
+                      item.id
+                    }
+                    className="rounded-xl border border-[#e8dcc2] bg-white p-3 transition hover:-translate-y-1 hover:shadow-lg sm:rounded-2xl sm:p-4"
+                  >
+                    <div className="flex aspect-square items-center justify-center rounded-xl bg-[#faf9f6] p-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+
+                      <img
+                        src={
+                          relatedImage
+                        }
+                        alt={
+                          item.name
+                        }
+                        loading="lazy"
+                        className="max-h-full max-w-full object-contain mix-blend-multiply"
+                      />
+                    </div>
+
+                    <h3 className="mt-3 line-clamp-2 text-xs font-bold text-[#20170f] sm:mt-4 sm:text-sm">
+                      {
+                        item.name
+                      }
+                    </h3>
+
+                    <p className="mt-2 text-base font-extrabold text-[#b98218] sm:text-lg">
+                      {formatPrice(
+                        relatedCurrentPrice
+                      )}
+                    </p>
+
+                    <p
+                      className={`mt-2 text-[11px] font-bold ${
+                        item.stock >
+                        0
+                          ? "text-green-700"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {item.stock >
+                      0
+                        ? "Disponível"
+                        : "Esgotado"}
+                    </p>
+                  </Link>
+                );
+              }
+            )}
+
+            {related.length ===
+              0 && (
               <p className="col-span-full rounded-2xl border border-[#e8dcc2] bg-white p-6 text-neutral-500">
-                Nenhum produto relacionado encontrado.
+                Nenhum
+                produto
+                relacionado
+                encontrado.
               </p>
             )}
           </div>
@@ -258,9 +1023,54 @@ export default async function ProductPage({ params }: Props) {
 
       <Footer />
 
-      <button className="fixed bottom-8 right-8 flex h-[62px] w-[62px] items-center justify-center rounded-full bg-[#24c45a] text-white shadow-2xl">
-        <MessageCircle size={34} />
-      </button>
+      <Link
+        href="/contato"
+        aria-label="Fale conosco"
+        className="fixed bottom-6 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#24c45a] text-white shadow-2xl sm:bottom-8 sm:right-8 sm:h-[62px] sm:w-[62px]"
+      >
+        <MessageCircle
+          size={30}
+        />
+      </Link>
     </main>
+  );
+}
+
+function Benefit({
+  icon,
+  title,
+  text,
+}: {
+  icon:
+    ReactNode;
+
+  title:
+    string;
+
+  text:
+    string;
+}) {
+  return (
+    <div className="flex gap-3">
+      <span className="shrink-0 text-[#b98218]">
+        {
+          icon
+        }
+      </span>
+
+      <div>
+        <p className="text-[13px] font-bold text-[#20170f]">
+          {
+            title
+          }
+        </p>
+
+        <p className="mt-0.5 text-xs leading-5 text-neutral-500">
+          {
+            text
+          }
+        </p>
+      </div>
+    </div>
   );
 }
