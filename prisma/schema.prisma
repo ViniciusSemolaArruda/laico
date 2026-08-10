@@ -703,3 +703,38 @@ model OrderAccessToken {
   @@index([expiresAt])
   @@index([revokedAt])
 }
+
+/**
+ * =========================================================
+ * INTEGRAÇÕES LOGÍSTICAS
+ * =========================================================
+ * Armazena tokens criptografados de provedores logísticos.
+ */
+model ShippingIntegrationCredential {
+  id String @id @default(cuid())
+
+  /**
+   * Exemplo: MELHOR_ENVIO
+   */
+  provider String @unique
+
+  /**
+   * Tokens criptografados com AES-256-GCM.
+   */
+  accessTokenEncrypted  String @db.Text
+  refreshTokenEncrypted String @db.Text
+
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime?
+
+  scopes String[] @default([])
+
+  connectedAt DateTime  @default(now())
+  refreshedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accessTokenExpiresAt])
+  @@index([refreshTokenExpiresAt])
+}

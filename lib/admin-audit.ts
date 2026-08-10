@@ -13,13 +13,6 @@ import {
  * =========================================================
  * AÇÕES DE AUDITORIA
  * =========================================================
- *
- * Mantemos nomes padronizados para facilitar:
- *
- * - filtros;
- * - histórico;
- * - calendário;
- * - relatórios.
  */
 
 export type AdminAuditAction =
@@ -100,7 +93,9 @@ export type AdminAuditAction =
   /*
    * CONFIGURAÇÕES
    */
-  | "SETTINGS_UPDATED";
+  | "SETTINGS_UPDATED"
+  | "SHIPPING_INTEGRATION_CONNECTED"
+  | "SHIPPING_INTEGRATION_DISCONNECTED";
 
 /*
  * =========================================================
@@ -133,15 +128,8 @@ type CreateAdminAuditInput = {
     >;
 
   /*
-   * Quando uma alteração estiver acontecendo
-   * dentro de prisma.$transaction(), passamos
-   * o tx aqui.
-   *
-   * Assim:
-   *
-   * alteração + auditoria
-   *
-   * são confirmadas juntas.
+   * Permite que alteração e auditoria sejam
+   * confirmadas dentro da mesma transação.
    */
   transaction?:
     Prisma.TransactionClient;
@@ -151,10 +139,6 @@ type CreateAdminAuditInput = {
  * =========================================================
  * DADOS PROIBIDOS
  * =========================================================
- *
- * Mesmo que um programador passe acidentalmente
- * alguma dessas propriedades em `changes`,
- * removemos antes de salvar.
  */
 
 const SENSITIVE_KEYS = [
@@ -205,9 +189,6 @@ const SENSITIVE_KEYS = [
  * =========================================================
  * LIMITES
  * =========================================================
- *
- * Impedem que um erro de programação coloque
- * objetos gigantes no histórico.
  */
 
 const MAXIMUM_DEPTH =
@@ -230,8 +211,7 @@ const MAXIMUM_OBJECT_KEYS =
 
 function normalizeAuditText(
   value: string,
-  maximumLength:
-    number
+  maximumLength: number
 ) {
   return value
     .trim()
@@ -255,14 +235,14 @@ function normalizeKey(
 
 /*
  * =========================================================
- * VERIFICAR CAMPO SENSÍVEL
+ * CAMPO SENSÍVEL
  * =========================================================
  */
 
 function isSensitiveKey(
   key: string
 ) {
-  const normalized =
+  const normalizedKey =
     normalizeKey(
       key
     );
@@ -271,9 +251,9 @@ function isSensitiveKey(
     (
       sensitiveKey
     ) =>
-      normalized ===
+      normalizedKey ===
         sensitiveKey ||
-      normalized.includes(
+      normalizedKey.includes(
         sensitiveKey
       )
   );
@@ -292,10 +272,6 @@ function sanitizeAuditValue(
   | Prisma.InputJsonValue
   | null
   | undefined {
-  /*
-   * Limite de profundidade.
-   */
-
   if (
     depth >
     MAXIMUM_DEPTH
@@ -303,30 +279,17 @@ function sanitizeAuditValue(
     return "[limite de profundidade]";
   }
 
-  /*
-   * null
-   */
-
   if (
     value === null
   ) {
     return null;
   }
 
-  /*
-   * undefined
-   */
-
   if (
-    value ===
-    undefined
+    value === undefined
   ) {
     return undefined;
   }
-
-  /*
-   * string
-   */
 
   if (
     typeof value ===
@@ -338,18 +301,10 @@ function sanitizeAuditValue(
     );
   }
 
-  /*
-   * number
-   */
-
   if (
     typeof value ===
     "number"
   ) {
-    /*
-     * JSON não suporta Infinity ou NaN.
-     */
-
     if (
       !Number.isFinite(
         value
@@ -363,10 +318,6 @@ function sanitizeAuditValue(
     return value;
   }
 
-  /*
-   * boolean
-   */
-
   if (
     typeof value ===
     "boolean"
@@ -374,24 +325,12 @@ function sanitizeAuditValue(
     return value;
   }
 
-  /*
-   * bigint
-   */
-
   if (
     typeof value ===
     "bigint"
   ) {
     return value.toString();
   }
-
-  /*
-   * Date
-   *
-   * Sempre armazenamos o instante real.
-   * A conversão para Brasília acontece
-   * somente na exibição.
-   */
 
   if (
     value instanceof
@@ -410,10 +349,10 @@ function sanitizeAuditValue(
     )
   ) {
     const sanitizedArray:
-  Array<
-    | Prisma.InputJsonValue
-    | null
-  > = [];
+      Array<
+        | Prisma.InputJsonValue
+        | null
+      > = [];
 
     const limitedArray =
       value.slice(
@@ -425,18 +364,18 @@ function sanitizeAuditValue(
       const item of
       limitedArray
     ) {
-      const sanitized =
+      const sanitizedItem =
         sanitizeAuditValue(
           item,
           depth + 1
         );
 
       if (
-        sanitized !==
+        sanitizedItem !==
         undefined
       ) {
         sanitizedArray.push(
-          sanitized
+          sanitizedItem
         );
       }
     }
@@ -450,16 +389,8 @@ function sanitizeAuditValue(
 
   if (
     typeof value ===
-      "object"
+    "object"
   ) {
-    /*
-     * Alguns tipos como Decimal possuem
-     * toJSON/toString próprios.
-     *
-     * Para objetos normais percorremos
-     * somente propriedades enumeráveis.
-     */
-
     const record =
       value as Record<
         string,
@@ -467,11 +398,11 @@ function sanitizeAuditValue(
       >;
 
     const result:
-  Record<
-    string,
-    | Prisma.InputJsonValue
-    | null
-  > = {};
+      Record<
+        string,
+        | Prisma.InputJsonValue
+        | null
+      > = {};
 
     const entries =
       Object.entries(
@@ -488,10 +419,9 @@ function sanitizeAuditValue(
       ] of entries
     ) {
       /*
-       * Campo sensível:
-       * simplesmente não entra no log.
+       * Dados sensíveis nunca entram
+       * no histórico administrativo.
        */
-
       if (
         isSensitiveKey(
           key
@@ -500,14 +430,14 @@ function sanitizeAuditValue(
         continue;
       }
 
-      const sanitized =
+      const sanitizedItem =
         sanitizeAuditValue(
           itemValue,
           depth + 1
         );
 
       if (
-        sanitized ===
+        sanitizedItem ===
         undefined
       ) {
         continue;
@@ -519,14 +449,13 @@ function sanitizeAuditValue(
           100
         )
       ] =
-        sanitized;
+        sanitizedItem;
     }
 
     /*
-     * Decimal do Prisma e outros objetos
-     * sem propriedades enumeráveis.
+     * Prisma Decimal e outros objetos que
+     * possuem representação textual própria.
      */
-
     if (
       Object.keys(
         result
@@ -554,45 +483,36 @@ function sanitizeAuditValue(
     return result;
   }
 
-  /*
-   * symbol / function etc.
-   */
-
   return undefined;
 }
 
 /*
  * =========================================================
- * SANITIZAR CHANGES
+ * SANITIZAR ALTERAÇÕES
  * =========================================================
  */
 
 function sanitizeChanges(
-  changes:
-    Record<
-      string,
-      unknown
-    >
+  changes: Record<
+    string,
+    unknown
+  >
 ): Prisma.InputJsonValue {
-  const sanitized =
+  const sanitizedChanges =
     sanitizeAuditValue(
       changes
     );
 
-  /*
-   * changes sempre deve ser um objeto
-   * JSON no nível superior.
-   */
   if (
-    sanitized ===
+    sanitizedChanges ===
       undefined ||
-    sanitized ===
+    sanitizedChanges ===
       null
   ) {
     return {};
   }
 
-  return sanitized;
+  return sanitizedChanges;
 }
 
 /*
@@ -642,124 +562,111 @@ export async function createAdminAuditLog({
 
   const auditData:
     Prisma.AdminAuditLogCreateInput =
-      {
-        module,
+    {
+      module,
 
-        action,
+      action,
 
-        entityType:
-          normalizedEntityType,
+      entityType:
+        normalizedEntityType,
 
-        entityId:
-          normalizedEntityId,
+      entityId:
+        normalizedEntityId,
 
-        changes:
-          changes
-            ? sanitizeChanges(
-                changes
-              )
-            : undefined,
+      changes:
+        changes
+          ? sanitizeChanges(
+              changes
+            )
+          : undefined,
 
-        actor:
-          normalizedActorId
-            ? {
-                connect: {
-                  id:
-                    normalizedActorId,
-                },
-              }
-            : undefined,
-      };
+      actor:
+        normalizedActorId
+          ? {
+              connect: {
+                id:
+                  normalizedActorId,
+              },
+            }
+          : undefined,
+    };
 
   /*
-   * =======================================================
-   * DENTRO DE TRANSAÇÃO
-   * =======================================================
+   * Dentro de uma transação existente.
    */
 
   if (
     transaction
   ) {
-    return transaction.adminAuditLog.create({
+    return transaction
+      .adminAuditLog
+      .create({
+        data:
+          auditData,
+
+        select: {
+          id: true,
+          actorId: true,
+          module: true,
+          action: true,
+          entityType: true,
+          entityId: true,
+          createdAt: true,
+        },
+      });
+  }
+
+  /*
+   * Fora de uma transação.
+   */
+
+  return prisma
+    .adminAuditLog
+    .create({
       data:
         auditData,
 
       select: {
-        id:
-          true,
-
-        actorId:
-          true,
-
-        module:
-          true,
-
-        action:
-          true,
-
-        entityType:
-          true,
-
-        entityId:
-          true,
-
-        createdAt:
-          true,
+        id: true,
+        actorId: true,
+        module: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        createdAt: true,
       },
     });
-  }
-
-  /*
-   * =======================================================
-   * FORA DE TRANSAÇÃO
-   * =======================================================
-   */
-
-  return prisma.adminAuditLog.create({
-    data:
-      auditData,
-
-    select: {
-      id:
-        true,
-
-      actorId:
-        true,
-
-      module:
-        true,
-
-      action:
-        true,
-
-      entityType:
-        true,
-
-      entityId:
-        true,
-
-      createdAt:
-        true,
-    },
-  });
 }
 
 /*
  * =========================================================
- * HORÁRIO DE BRASÍLIA
+ * DATA E HORÁRIO DE BRASÍLIA
  * =========================================================
- *
- * O PostgreSQL/Prisma continua armazenando
- * o instante normalmente.
- *
- * Esta função serve somente para apresentação.
- *
- * Não fazemos:
- *
- * date - 3 horas
- *
- * porque isso seria uma conversão frágil.
  */
+
+function normalizeAuditDate(
+  value:
+    | Date
+    | string
+) {
+  const date =
+    value instanceof
+      Date
+      ? value
+      : new Date(
+          value
+        );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return date;
+}
 
 export function formatAdminAuditDate(
   value:
@@ -767,18 +674,11 @@ export function formatAdminAuditDate(
     | string
 ) {
   const date =
-    value instanceof
-      Date
-      ? value
-      : new Date(
-          value
-        );
+    normalizeAuditDate(
+      value
+    );
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (!date) {
     return "-";
   }
 
@@ -809,18 +709,10 @@ export function formatAdminAuditDate(
       hour12:
         false,
     }
-  ).format(date);
+  ).format(
+    date
+  );
 }
-
-/*
- * =========================================================
- * DIA EM BRASÍLIA
- * =========================================================
- *
- * Útil posteriormente para agrupar o calendário:
- *
- * 06/08/2026
- */
 
 export function formatAdminAuditDay(
   value:
@@ -828,18 +720,11 @@ export function formatAdminAuditDay(
     | string
 ) {
   const date =
-    value instanceof
-      Date
-      ? value
-      : new Date(
-          value
-        );
+    normalizeAuditDate(
+      value
+    );
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (!date) {
     return "-";
   }
 
@@ -858,14 +743,10 @@ export function formatAdminAuditDay(
       year:
         "numeric",
     }
-  ).format(date);
+  ).format(
+    date
+  );
 }
-
-/*
- * =========================================================
- * HORÁRIO EM BRASÍLIA
- * =========================================================
- */
 
 export function formatAdminAuditTime(
   value:
@@ -873,18 +754,11 @@ export function formatAdminAuditTime(
     | string
 ) {
   const date =
-    value instanceof
-      Date
-      ? value
-      : new Date(
-          value
-        );
+    normalizeAuditDate(
+      value
+    );
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (!date) {
     return "-";
   }
 
@@ -906,15 +780,15 @@ export function formatAdminAuditTime(
       hour12:
         false,
     }
-  ).format(date);
+  ).format(
+    date
+  );
 }
 
 /*
  * =========================================================
- * NOMES AMIGÁVEIS DAS AÇÕES
+ * NOMES AMIGÁVEIS
  * =========================================================
- *
- * Usaremos isso na tela de histórico.
  */
 
 export function getAdminAuditActionLabel(
@@ -1042,6 +916,12 @@ export function getAdminAuditActionLabel(
 
     SETTINGS_UPDATED:
       "Configurações atualizadas",
+
+    SHIPPING_INTEGRATION_CONNECTED:
+      "Integração logística conectada",
+
+    SHIPPING_INTEGRATION_DISCONNECTED:
+      "Integração logística desconectada",
   };
 
   return labels[
