@@ -40,7 +40,7 @@ const banners: Banner[] = [
 
     alt: "Um presente de fé para quem sempre cuidou de você",
 
-    href: "/produtos",
+    href: "/catalogo",
   },
 
   {
@@ -50,7 +50,6 @@ const banners: Banner[] = [
       "/banners/banner-2.webp",
 
     /*
-    /*
      * MOBILE
      */
     mobileImage:
@@ -58,7 +57,7 @@ const banners: Banner[] = [
 
     alt: "Fé que transforma a casa em um lar",
 
-    href: "/produtos",
+    href: "/catalogo",
   },
 
   {
@@ -75,7 +74,7 @@ const banners: Banner[] = [
 
     alt: "Sua fé, sua história, Laico",
 
-    href: "/produtos",
+    href: "/catalogo",
   },
 ];
 
