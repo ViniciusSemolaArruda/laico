@@ -240,69 +240,74 @@ export default function Header({
    * =======================================================
    */
 
-  useEffect(() => {
-    function updateCartCount() {
-      setCartCount(
-        getStoredCartCount()
-      );
-    }
+useEffect(() => {
+  function updateCartCount() {
+    setCartCount(
+      getStoredCartCount()
+    );
+  }
 
-    function handleStorage(
-      event:
-        StorageEvent
+  function handleStorage(
+    event: StorageEvent
+  ) {
+    if (
+      event.key ===
+        "laico-cart" ||
+      event.key === null
     ) {
-      if (
-        event.key ===
-          "laico-cart" ||
-        event.key ===
-          null
-      ) {
-        updateCartCount();
-      }
-    }
-
-    function handleCartUpdated() {
       updateCartCount();
     }
+  }
 
-    function handleFocus() {
-      updateCartCount();
-    }
-
+  function handleCartUpdated() {
     updateCartCount();
+  }
 
-    window.addEventListener(
+  function handleFocus() {
+    updateCartCount();
+  }
+
+  const animationFrame =
+    window.requestAnimationFrame(
+      updateCartCount
+    );
+
+  window.addEventListener(
+    "storage",
+    handleStorage
+  );
+
+  window.addEventListener(
+    "laico-cart-updated",
+    handleCartUpdated
+  );
+
+  window.addEventListener(
+    "focus",
+    handleFocus
+  );
+
+  return () => {
+    window.cancelAnimationFrame(
+      animationFrame
+    );
+
+    window.removeEventListener(
       "storage",
       handleStorage
     );
 
-    window.addEventListener(
+    window.removeEventListener(
       "laico-cart-updated",
       handleCartUpdated
     );
 
-    window.addEventListener(
+    window.removeEventListener(
       "focus",
       handleFocus
     );
-
-    return () => {
-      window.removeEventListener(
-        "storage",
-        handleStorage
-      );
-
-      window.removeEventListener(
-        "laico-cart-updated",
-        handleCartUpdated
-      );
-
-      window.removeEventListener(
-        "focus",
-        handleFocus
-      );
-    };
-  }, []);
+  };
+}, []);
 
   /*
    * =======================================================
