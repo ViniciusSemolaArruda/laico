@@ -34,13 +34,18 @@ type HeaderProps = {
   initialActiveMenu?: string;
 };
 
-const CATALOG_MENU_ITEMS = [
+type CatalogMenuResponse = {
+  success?: boolean;
+  categories?: unknown;
+};
+
+const ALWAYS_VISIBLE_MENU_ITEMS = [
   {
     label:
       "Todos",
 
     href:
-      "/",
+      "/catalogo",
   },
 
   {
@@ -48,7 +53,7 @@ const CATALOG_MENU_ITEMS = [
       "Novidades",
 
     href:
-      "/?ordem=recentes",
+      "/catalogo?ordem=recentes",
   },
 
   {
@@ -56,48 +61,14 @@ const CATALOG_MENU_ITEMS = [
       "Mais Vendidos",
 
     href:
-      "/?ordem=mais-vendidos",
+      "/catalogo?ordem=mais-vendidos",
   },
+] as const;
 
-  {
-    label:
-      "Artigos Religiosos",
-
-    href:
-      "/?categoria=Artigos+Religiosos",
-  },
-
-  {
-    label:
-      "Acessórios Femininos",
-
-    href:
-      "/?categoria=Acessórios+Femininos",
-  },
-
-  {
-    label:
-      "Chaveiro",
-
-    href:
-      "/?categoria=Chaveiro",
-  },
-
-  {
-    label:
-      "Acessórios & Embalagem",
-
-    href:
-      "/?categoria=Acessórios+%26+Embalagem",
-  },
-
-  {
-    label:
-      "Coleções",
-
-    href:
-      "/?categoria=Coleções",
-  },
+const CATALOG_CATEGORIES = [
+  "Acessórios",
+  "Vestuário",
+  "Imagem Religiosa",
 ] as const;
 
 function getStoredCartCount() {
@@ -234,6 +205,35 @@ export default function Header({
       initialActiveMenu
     );
 
+  const [
+    availableCategories,
+    setAvailableCategories,
+  ] =
+    useState<string[]>(
+      []
+    );
+
+  const catalogMenuItems = [
+    ...ALWAYS_VISIBLE_MENU_ITEMS,
+
+    ...CATALOG_CATEGORIES.filter(
+      (category) =>
+        availableCategories.includes(
+          category
+        )
+    ).map(
+      (category) => ({
+        label:
+          category,
+
+        href:
+          `/catalogo?categoria=${encodeURIComponent(
+            category
+          )}`,
+      })
+    ),
+  ];
+
   /*
    * =======================================================
    * CARRINHO
@@ -308,6 +308,86 @@ useEffect(() => {
     );
   };
 }, []);
+
+  /*
+   * =======================================================
+   * CATEGORIAS DISPONÍVEIS
+   * =======================================================
+   *
+   * Categorias sem nenhum produto ativo e não arquivado
+   * não são exibidas no menu do site.
+   */
+
+  useEffect(() => {
+    const controller =
+      new AbortController();
+
+    async function loadCatalogMenu() {
+      try {
+        const response =
+          await fetch(
+            "/api/catalog/menu",
+            {
+              method:
+                "GET",
+
+              cache:
+                "no-store",
+
+              signal:
+                controller.signal,
+            }
+          );
+
+        if (
+          !response.ok
+        ) {
+          return;
+        }
+
+        const data =
+          (await response.json()) as CatalogMenuResponse;
+
+        if (
+          !Array.isArray(
+            data.categories
+          )
+        ) {
+          return;
+        }
+
+        setAvailableCategories(
+          data.categories.filter(
+            (
+              category
+            ): category is string =>
+              typeof category ===
+                "string" &&
+              CATALOG_CATEGORIES.includes(
+                category as (typeof CATALOG_CATEGORIES)[number]
+              )
+          )
+        );
+      } catch (
+        error
+      ) {
+        if (
+          error instanceof
+            Error &&
+          error.name ===
+            "AbortError"
+        ) {
+          return;
+        }
+      }
+    }
+
+    void loadCatalogMenu();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
 
   /*
    * =======================================================
@@ -451,7 +531,7 @@ useEffect(() => {
             }
           >
             <form
-              action="/"
+              action="/catalogo"
               method="GET"
               role="search"
               className={
@@ -724,7 +804,7 @@ useEffect(() => {
           {/* BUSCA MOBILE */}
 
           <form
-            action="/"
+            action="/catalogo"
             method="GET"
             role="search"
             className={
@@ -768,8 +848,15 @@ useEffect(() => {
             className={
               styles.navigationInner
             }
+            style={{
+              justifyContent:
+                "center",
+
+              columnGap:
+                "clamp(28px, 4vw, 72px)",
+            }}
           >
-            {CATALOG_MENU_ITEMS.map(
+            {catalogMenuItems.map(
               (
                 item
               ) => (
@@ -895,7 +982,7 @@ useEffect(() => {
               styles.mobileCategories
             }
           >
-            {CATALOG_MENU_ITEMS.map(
+            {catalogMenuItems.map(
               (
                 item
               ) => (

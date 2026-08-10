@@ -102,7 +102,7 @@ function FilterForm({
 }: FilterFormProps) {
   return (
     <form
-      action="/"
+      action="/catalogo"
       method="GET"
       className="bg-white"
     >
@@ -318,7 +318,7 @@ function FilterForm({
         {/* LIMPAR */}
 
         <Link
-          href="/"
+          href="/catalogo"
           onClick={
             onFinished
           }
