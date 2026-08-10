@@ -440,7 +440,36 @@ export async function POST(
           quote.freeShippingDiscount,
 
         options:
-          quote.options,
+          quote.options.map(
+            (option) => ({
+              serviceId:
+                option.serviceId,
+
+              serviceName:
+                option.serviceName,
+
+              companyId:
+                option.companyId,
+
+              companyName:
+                option.companyName,
+
+              customerPrice:
+                option.customerPrice,
+
+              deliveryTime:
+                option.deliveryTime,
+
+              deliveryRange:
+                option.deliveryRange,
+
+              currency:
+                option.currency,
+
+              freeShipping:
+                option.freeShipping,
+            })
+          ),
 
         quotedAt:
           quote.quotedAt,

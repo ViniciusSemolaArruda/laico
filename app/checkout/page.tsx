@@ -117,8 +117,8 @@ type ShippingOption = {
   customerPrice: number;
   deliveryTime: number;
   deliveryRange: {
-    min: number;
-    max: number;
+    minimum: number;
+    maximum: number;
   };
   currency: string;
   freeShipping: boolean;
@@ -126,11 +126,17 @@ type ShippingOption = {
 
 type ShippingQuoteResponse = {
   success?: boolean;
-  destinationCep?: string;
-  subtotal?: number;
-  freeShippingApplied?: boolean;
-  expiresAt?: string;
-  options?: ShippingOption[];
+
+  quote?: {
+    destinationCep?: string;
+    subtotal?: number;
+    freeShippingEligible?: boolean;
+    freeShippingMinimum?: number;
+    freeShippingDiscount?: number;
+    expiresAt?: string;
+    options?: ShippingOption[];
+  };
+
   error?: string;
 };
 
@@ -139,6 +145,20 @@ type StoredShippingSelection =
     destinationCep: string;
     expiresAt?: string;
   };
+
+type CepLookupResponse = {
+  success?: boolean;
+
+  address?: {
+    cep?: string;
+    street?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+  };
+
+  error?: string;
+};
 
 const initialForm: CheckoutForm = {
   name: "",
@@ -292,12 +312,12 @@ function isShippingOption(
     option.deliveryRange !== null &&
     Number.isFinite(
       Number(
-        option.deliveryRange.min
+        option.deliveryRange.minimum
       )
     ) &&
     Number.isFinite(
       Number(
-        option.deliveryRange.max
+        option.deliveryRange.maximum
       )
     )
   );
@@ -448,12 +468,25 @@ export default function CheckoutPage() {
     null
   );
 
+  const [
+    cepLoading,
+    setCepLoading,
+  ] = useState(false);
+
+  const [
+    cepError,
+    setCepError,
+  ] = useState("");
+
   /*
    * Impede dois envios antes que o React
    * atualize o estado loading.
    */
   const creatingOrderRef =
     useRef(false);
+
+  const lastLookedUpCepRef =
+    useRef("");
 
   useEffect(() => {
     const timer =
@@ -543,6 +576,132 @@ export default function CheckoutPage() {
       window.clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    const cep =
+      normalizeCep(form.cep);
+
+    if (
+      orderId ||
+      cep.length !== 8 ||
+      lastLookedUpCepRef.current ===
+        cep
+    ) {
+      return;
+    }
+
+    const controller =
+      new AbortController();
+
+    const timer =
+      window.setTimeout(
+        async () => {
+          setCepLoading(true);
+          setCepError("");
+
+          try {
+            const response =
+              await fetch(
+                `/api/address/cep/${cep}`,
+                {
+                  method: "GET",
+                  cache: "no-store",
+                  credentials:
+                    "same-origin",
+                  signal:
+                    controller.signal,
+                }
+              );
+
+            const data =
+              (await response
+                .json()
+                .catch(
+                  () => ({})
+                )) as CepLookupResponse;
+
+            if (!response.ok) {
+              throw new Error(
+                data.error ||
+                  "Não foi possível consultar o CEP."
+              );
+            }
+
+            const address =
+              data.address;
+
+            if (
+              !address ||
+              typeof address.city !==
+                "string" ||
+              typeof address.state !==
+                "string"
+            ) {
+              throw new Error(
+                "O CEP não retornou um endereço válido."
+              );
+            }
+
+            lastLookedUpCepRef.current =
+              cep;
+
+            setForm((current) => {
+              if (
+                normalizeCep(
+                  current.cep
+                ) !== cep
+              ) {
+                return current;
+              }
+
+              return {
+                ...current,
+                street:
+                  address.street ??
+                  "",
+                neighborhood:
+                  address.neighborhood ??
+                  "",
+                city:
+                  address.city ??
+                  "",
+                state:
+                  address.state ??
+                  "",
+              };
+            });
+          } catch (error) {
+            if (
+              error instanceof
+                DOMException &&
+              error.name ===
+                "AbortError"
+            ) {
+              return;
+            }
+
+            setCepError(
+              error instanceof Error
+                ? error.message
+                : "Não foi possível consultar o CEP."
+            );
+          } finally {
+            if (
+              !controller.signal
+                .aborted
+            ) {
+              setCepLoading(false);
+            }
+          }
+        },
+        450
+      );
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [form.cep, orderId]);
+
   /*
    * O resumo local é apenas visual.
    * O servidor recalcula todos os valores.
@@ -583,10 +742,37 @@ export default function CheckoutPage() {
         ? formatCep(value)
         : value;
 
-    setForm((current) => ({
-      ...current,
-      [field]: nextValue,
-    }));
+    setForm((current) => {
+      if (
+        field === "cep" &&
+        normalizeCep(
+          current.cep
+        ) !==
+          normalizeCep(nextValue)
+      ) {
+        return {
+          ...current,
+          cep: nextValue,
+          street: "",
+          neighborhood: "",
+          city: "",
+          state: "",
+        };
+      }
+
+      return {
+        ...current,
+        [field]: nextValue,
+      };
+    });
+
+    if (field === "cep") {
+      setCepError("");
+      setCepLoading(false);
+
+      lastLookedUpCepRef.current =
+        "";
+    }
 
     if (
       field === "cep" &&
@@ -704,9 +890,9 @@ export default function CheckoutPage() {
 
       const validOptions =
         Array.isArray(
-          data.options
+          data.quote?.options
         )
-          ? data.options.filter(
+          ? data.quote.options.filter(
               isShippingOption
             )
           : [];
@@ -724,9 +910,10 @@ export default function CheckoutPage() {
       );
 
       setShippingQuoteExpiresAt(
-        typeof data.expiresAt ===
+        typeof data.quote
+          ?.expiresAt ===
           "string"
-          ? data.expiresAt
+          ? data.quote.expiresAt
           : null
       );
     } catch (error) {
@@ -1122,6 +1309,7 @@ export default function CheckoutPage() {
                         inputClassName
                       }
                     />
+
                   </label>
 
                   <label className="block">
@@ -1282,6 +1470,27 @@ export default function CheckoutPage() {
                         inputClassName
                       }
                     />
+
+                    {cepLoading && (
+                      <span className="mt-2 flex items-center gap-2 text-[12px] text-[#b98218]">
+                        <LoaderCircle
+                          size={14}
+                          className="animate-spin"
+                          aria-hidden="true"
+                        />
+
+                        Buscando endereço...
+                      </span>
+                    )}
+
+                    {cepError && (
+                      <span
+                        role="alert"
+                        className="mt-2 block text-[12px] leading-5 text-red-600"
+                      >
+                        {cepError}
+                      </span>
+                    )}
                   </label>
 
                   <label className="block">
@@ -1623,10 +1832,10 @@ export default function CheckoutPage() {
                                 </strong>
 
                                 <span className="mt-0.5 block text-[11px] text-neutral-500">
-                                  {option.deliveryRange.min ===
-                                  option.deliveryRange.max
-                                    ? `${option.deliveryRange.max} dia(s) útil(eis)`
-                                    : `${option.deliveryRange.min} a ${option.deliveryRange.max} dias úteis`}
+                                  {option.deliveryRange.minimum ===
+                                  option.deliveryRange.maximum
+                                    ? `${option.deliveryRange.maximum} dia(s) útil(eis)`
+                                    : `${option.deliveryRange.minimum} a ${option.deliveryRange.maximum} dias úteis`}
                                 </span>
                               </span>
 
