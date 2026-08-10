@@ -3,6 +3,10 @@
 import Header from "../../components/Header/Header";
 import Footer from "../../components/Footer";
 
+import ShippingCalculator, {
+  type SelectedShippingOption,
+} from "@/components/cart/ShippingCalculator";
+
 import Link from "next/link";
 
 import {
@@ -17,11 +21,18 @@ import {
 } from "lucide-react";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+
+/*
+ * =========================================================
+ * TIPOS
+ * =========================================================
+ */
 
 type CartItem = {
   id: string;
@@ -33,22 +44,41 @@ type CartItem = {
   stock?: number;
 };
 
+/*
+ * =========================================================
+ * FORMATAÇÃO
+ * =========================================================
+ */
+
 function formatPrice(
   value: number
 ) {
   return value.toLocaleString(
     "pt-BR",
     {
-      style: "currency",
-      currency: "BRL",
+      style:
+        "currency",
+
+      currency:
+        "BRL",
     }
   );
 }
 
+/*
+ * =========================================================
+ * NORMALIZAR CARRINHO LOCAL
+ * =========================================================
+ */
+
 function normalizeCart(
   value: unknown
 ): CartItem[] {
-  if (!Array.isArray(value)) {
+  if (
+    !Array.isArray(
+      value
+    )
+  ) {
     return [];
   }
 
@@ -64,106 +94,122 @@ function normalizeCart(
           "object" &&
         item !== null
     )
-    .map((item) => {
-      const id =
-        typeof item.id ===
-        "string"
-          ? item.id
-          : "";
+    .map(
+      (item) => {
+        const id =
+          typeof item.id ===
+          "string"
+            ? item.id
+            : "";
 
-      const slug =
-        typeof item.slug ===
-        "string"
-          ? item.slug
-          : "";
+        const slug =
+          typeof item.slug ===
+          "string"
+            ? item.slug
+            : "";
 
-      const name =
-        typeof item.name ===
-        "string"
-          ? item.name
-          : "";
+        const name =
+          typeof item.name ===
+          "string"
+            ? item.name
+            : "";
 
-      const image =
-        typeof item.image ===
-        "string"
-          ? item.image
-          : "";
+        const image =
+          typeof item.image ===
+          "string"
+            ? item.image
+            : "";
 
-      const price =
-        Number(item.price);
-
-      const storedQuantity =
-        Math.floor(
+        const price =
           Number(
-            item.quantity
+            item.price
+          );
+
+        const storedQuantity =
+          Math.floor(
+            Number(
+              item.quantity
+            )
+          );
+
+        const storedStock =
+          item.stock ===
+            undefined
+            ? undefined
+            : Math.floor(
+                Number(
+                  item.stock
+                )
+              );
+
+        const stock =
+          storedStock !==
+            undefined &&
+          Number.isFinite(
+            storedStock
           )
-        );
-
-      const storedStock =
-        item.stock ===
-          undefined
-          ? undefined
-          : Math.floor(
-              Number(
-                item.stock
+            ? Math.max(
+                0,
+                storedStock
               )
-            );
+            : undefined;
 
-      const stock =
-        storedStock !==
-          undefined &&
-        Number.isFinite(
-          storedStock
-        )
-          ? Math.max(
-              0,
-              storedStock
-            )
-          : undefined;
+        const maximumQuantity =
+          stock !==
+            undefined
+            ? Math.max(
+                1,
+                stock
+              )
+            : 99;
 
-      const maximumQuantity =
-        stock !== undefined
-          ? Math.max(
-              1,
-              stock
-            )
-          : 99;
+        const quantity =
+          Number.isFinite(
+            storedQuantity
+          )
+            ? Math.min(
+                Math.max(
+                  storedQuantity,
+                  1
+                ),
+                maximumQuantity
+              )
+            : 1;
 
-      const quantity =
-        Number.isFinite(
-          storedQuantity
-        )
-          ? Math.min(
-              Math.max(
-                storedQuantity,
-                1
-              ),
-              maximumQuantity
-            )
-          : 1;
-
-      return {
-        id,
-        slug,
-        name,
-        image,
-        price,
-        quantity,
-        stock,
-      };
-    })
+        return {
+          id,
+          slug,
+          name,
+          image,
+          price,
+          quantity,
+          stock,
+        };
+      }
+    )
     .filter(
       (item) =>
-        item.id.length > 0 &&
-        item.slug.length > 0 &&
-        item.name.length > 0 &&
+        item.id.length >
+          0 &&
+        item.slug.length >
+          0 &&
+        item.name.length >
+          0 &&
         Number.isFinite(
           item.price
         ) &&
-        item.price >= 0 &&
-        item.quantity > 0
+        item.price >=
+          0 &&
+        item.quantity >
+          0
     );
 }
+
+/*
+ * =========================================================
+ * PÁGINA
+ * =========================================================
+ */
 
 export default function CartPage() {
   const [
@@ -174,10 +220,23 @@ export default function CartPage() {
       []
     );
 
-  /*
-   * Mantém a versão mais recente do carrinho
-   * disponível para os manipuladores dos botões.
-   */
+  const [
+    cartLoaded,
+    setCartLoaded,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    selectedShipping,
+    setSelectedShipping,
+  ] =
+    useState<
+      SelectedShippingOption |
+      null
+    >(null);
+
   const cartItemsRef =
     useRef<CartItem[]>(
       []
@@ -196,9 +255,19 @@ export default function CartPage() {
           "laico-cart"
         );
 
-      if (!storedCart) {
+      if (
+        !storedCart
+      ) {
         cartItemsRef.current =
           [];
+
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setCartItems([]);
+
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setCartLoaded(
+          true
+        );
 
         return;
       }
@@ -220,13 +289,18 @@ export default function CartPage() {
       setCartItems(
         normalizedCart
       );
+
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCartLoaded(
+        true
+      );
     } catch {
-      /*
-       * Um conteúdo inválido no localStorage
-       * não deve quebrar a página.
-       */
       localStorage.removeItem(
         "laico-cart"
+      );
+
+      sessionStorage.removeItem(
+        "laico-shipping-selection"
       );
 
       cartItemsRef.current =
@@ -234,17 +308,42 @@ export default function CartPage() {
 
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCartItems([]);
+
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCartLoaded(
+        true
+      );
     }
   }, []);
 
   /*
    * =====================================================
-   * SALVAR E NOTIFICAR O HEADER
+   * INVALIDAR FRETE
+   * =====================================================
+   *
+   * Qualquer mudança no carrinho invalida a cotação,
+   * porque peso, subtotal e quantidade mudaram.
+   */
+
+  function invalidateShipping() {
+    setSelectedShipping(
+      null
+    );
+
+    sessionStorage.removeItem(
+      "laico-shipping-selection"
+    );
+  }
+
+  /*
+   * =====================================================
+   * SALVAR CARRINHO
    * =====================================================
    */
 
   function commitCart(
-    nextItems: CartItem[]
+    nextItems:
+      CartItem[]
   ) {
     const normalizedItems =
       normalizeCart(
@@ -265,21 +364,19 @@ export default function CartPage() {
       )
     );
 
+    invalidateShipping();
+
     const totalQuantity =
       normalizedItems.reduce(
         (
-          total,
+          totalQuantityValue,
           item
         ) =>
-          total +
+          totalQuantityValue +
           item.quantity,
         0
       );
 
-    /*
-     * O Header escuta este evento e atualiza
-     * o contador sem recarregar a página.
-     */
     window.dispatchEvent(
       new CustomEvent(
         "laico-cart-updated",
@@ -306,30 +403,74 @@ export default function CartPage() {
     useMemo(() => {
       return cartItems.reduce(
         (
-          total,
+          subtotalValue,
           item
         ) =>
-          total +
+          subtotalValue +
           item.price *
             item.quantity,
         0
       );
     }, [cartItems]);
 
-  /*
-   * Valor temporário.
-   *
-   * Depois será substituído pelo cálculo
-   * real de frete através do CEP.
-   */
   const shipping =
-    cartItems.length > 0
-      ? 18.9
-      : 0;
+    selectedShipping
+      ?.price ??
+    0;
 
   const total =
     subtotal +
     shipping;
+
+  /*
+   * Força o componente de frete a ser recriado
+   * quando produtos ou quantidades mudarem.
+   */
+  const cartSignature =
+    useMemo(() => {
+      return cartItems
+        .map(
+          (item) =>
+            `${item.id}:${item.quantity}`
+        )
+        .sort()
+        .join(
+          "|"
+        );
+    }, [cartItems]);
+
+  const shippingItems =
+    useMemo(() => {
+      return cartItems.map(
+        (item) => ({
+          id:
+            item.id,
+
+          quantity:
+            item.quantity,
+        })
+      );
+    }, [cartItems]);
+
+  /*
+   * =====================================================
+   * FRETE SELECIONADO
+   * =====================================================
+   */
+
+  const handleShippingSelection =
+    useCallback(
+      (
+        selection:
+          | SelectedShippingOption
+          | null
+      ) => {
+        setSelectedShipping(
+          selection
+        );
+      },
+      []
+    );
 
   /*
    * =====================================================
@@ -344,7 +485,8 @@ export default function CartPage() {
       cartItemsRef.current.map(
         (item) => {
           if (
-            item.id !== id
+            item.id !==
+            id
           ) {
             return item;
           }
@@ -384,8 +526,10 @@ export default function CartPage() {
       cartItemsRef.current.map(
         (item) => {
           if (
-            item.id !== id ||
-            item.quantity <= 1
+            item.id !==
+              id ||
+            item.quantity <=
+              1
           ) {
             return item;
           }
@@ -411,7 +555,8 @@ export default function CartPage() {
     const nextItems =
       cartItemsRef.current.filter(
         (item) =>
-          item.id !== id
+          item.id !==
+          id
       );
 
     commitCart(
@@ -452,8 +597,23 @@ export default function CartPage() {
           Meu Carrinho
         </h1>
 
-        {cartItems.length ===
-        0 ? (
+        {!cartLoaded ? (
+          /*
+           * =================================================
+           * CARREGANDO
+           * =================================================
+           */
+
+          <div className="rounded-xl border border-[#f0e3c2] bg-white p-10 text-center">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#e8dcc2] border-t-[#cfa74a]" />
+
+            <p className="mt-4 text-sm text-neutral-500">
+              Carregando seu
+              carrinho...
+            </p>
+          </div>
+        ) : cartItems.length ===
+          0 ? (
           /*
            * =================================================
            * CARRINHO VAZIO
@@ -486,12 +646,10 @@ export default function CartPage() {
            * =================================================
            */
 
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
             {/* PRODUTOS */}
 
             <section className="overflow-hidden rounded-lg border border-[#f0e3c2] bg-white">
-              {/* CABEÇALHO DA TABELA */}
-
               <div className="hidden grid-cols-[minmax(280px,1fr)_140px_130px_120px] gap-4 border-b border-[#f0e3c2] px-6 py-4 text-[13px] font-bold uppercase text-[#6f5a28] md:grid">
                 <span>
                   Produto
@@ -509,8 +667,6 @@ export default function CartPage() {
                   Total
                 </span>
               </div>
-
-              {/* ITENS */}
 
               {cartItems.map(
                 (item) => {
@@ -709,43 +865,104 @@ export default function CartPage() {
                   </strong>
                 </div>
 
-                <div className="flex justify-between gap-4">
+                <div className="flex items-start justify-between gap-4">
                   <span className="text-neutral-600">
                     Frete
                   </span>
 
-                  <strong>
-                    {formatPrice(
-                      shipping
-                    )}
-                  </strong>
-                </div>
+                  {selectedShipping ? (
+                    <div className="text-right">
+                      <strong
+                        className={
+                          selectedShipping
+                            .freeShipping
+                            ? "text-green-700"
+                            : ""
+                        }
+                      >
+                        {selectedShipping
+                          .freeShipping
+                          ? "Grátis"
+                          : formatPrice(
+                              shipping
+                            )}
+                      </strong>
 
-                <p className="text-xs leading-5 text-neutral-500">
-                  O valor definitivo
-                  será validado no
-                  checkout.
-                </p>
-
-                <div className="flex justify-between gap-4 border-t border-[#f0e3c2] pt-4 text-[18px]">
-                  <span className="font-bold">
-                    Total
-                  </span>
-
-                  <strong className="text-[#cfa74a]">
-                    {formatPrice(
-                      total
-                    )}
-                  </strong>
+                      <span className="mt-1 block max-w-[190px] text-[11px] leading-4 text-neutral-500">
+                        {
+                          selectedShipping
+                            .serviceName
+                        }
+                        {" · "}
+                        {
+                          selectedShipping
+                            .companyName
+                        }
+                      </span>
+                    </div>
+                  ) : (
+                    <strong className="text-neutral-400">
+                      A calcular
+                    </strong>
+                  )}
                 </div>
               </div>
 
-              <Link
-                href="/checkout"
-                className="mt-6 flex h-[46px] w-full items-center justify-center rounded bg-gradient-to-r from-[#b8872b] via-[#d8b35a] to-[#cfa74a] font-bold text-white transition hover:brightness-95"
-              >
-                Finalizar compra
-              </Link>
+              {/* CÁLCULO DE FRETE */}
+
+              <ShippingCalculator
+                key={
+                  cartSignature
+                }
+                items={
+                  shippingItems
+                }
+                onSelectionChange={
+                  handleShippingSelection
+                }
+              />
+
+              {/* TOTAL */}
+
+              <div className="mt-5 flex justify-between gap-4 border-t border-[#f0e3c2] pt-4 text-[18px]">
+                <span className="font-bold">
+                  {selectedShipping
+                    ? "Total"
+                    : "Total parcial"}
+                </span>
+
+                <strong className="text-[#cfa74a]">
+                  {formatPrice(
+                    total
+                  )}
+                </strong>
+              </div>
+
+              <p className="mt-3 text-xs leading-5 text-neutral-500">
+                Preços, estoque e
+                entrega serão
+                confirmados novamente
+                no checkout.
+              </p>
+
+              {/* FINALIZAR */}
+
+              {selectedShipping ? (
+                <Link
+                  href="/checkout"
+                  className="mt-6 flex h-[46px] w-full items-center justify-center rounded bg-gradient-to-r from-[#b8872b] via-[#d8b35a] to-[#cfa74a] font-bold text-white transition hover:brightness-95"
+                >
+                  Finalizar compra
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="mt-6 flex h-[46px] w-full cursor-not-allowed items-center justify-center rounded bg-neutral-300 font-bold text-white"
+                >
+                  Escolha a entrega
+                </button>
+              )}
 
               <Link
                 href="/"
@@ -763,8 +980,8 @@ export default function CartPage() {
                   />
 
                   <span>
-                    Entrega para todo
-                    o Brasil
+                    Entrega calculada
+                    pelo CEP
                   </span>
                 </div>
 
@@ -790,8 +1007,9 @@ export default function CartPage() {
                   />
 
                   <span>
-                    Compra protegida
-                    e dados seguros
+                    Frete validado
+                    novamente no
+                    servidor
                   </span>
                 </div>
               </div>

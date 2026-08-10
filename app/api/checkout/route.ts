@@ -16,6 +16,10 @@ import {
 
 import { prisma } from "@/lib/prisma";
 
+import {
+  calculateMelhorEnvioQuote,
+} from "@/lib/shipping/melhor-envio-quote";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -78,6 +82,10 @@ type CheckoutBody = {
   };
 
   items?: CheckoutItem[];
+
+  shipping?: {
+    serviceId?: unknown;
+  };
 };
 
 type DatabaseProduct = {
@@ -436,6 +444,12 @@ export async function POST(
 
     const items =
       body.items;
+
+    const requestedShippingServiceId =
+      normalizeText(
+        body.shipping?.serviceId,
+        100
+      );
 
     /*
      * =====================================================
@@ -829,6 +843,78 @@ export async function POST(
       );
     }
 
+    if (
+      !requestedShippingServiceId
+    ) {
+      return errorResponse(
+        "Selecione uma modalidade de entrega.",
+        400
+      );
+    }
+
+    /*
+     * =====================================================
+     * FRETE AUTORITATIVO
+     * =====================================================
+     *
+     * O navegador envia somente o identificador da
+     * modalidade escolhida. Preço, prazo, peso,
+     * dimensões e frete grátis são recalculados agora
+     * pelo servidor com os produtos do banco.
+     */
+
+    const shippingQuote =
+      await calculateMelhorEnvioQuote({
+        destinationCep:
+          cep,
+
+        items:
+          normalizedItems.map(
+            (item) => ({
+              productId:
+                item.id,
+
+              quantity:
+                item.quantity,
+            })
+          ),
+      });
+
+    const selectedShippingOption =
+      shippingQuote.options.find(
+        (option) =>
+          option.serviceId ===
+          requestedShippingServiceId
+      );
+
+    if (
+      !selectedShippingOption
+    ) {
+      return errorResponse(
+        "A modalidade de entrega selecionada não está mais disponível. Calcule o frete novamente.",
+        409
+      );
+    }
+
+    const authoritativeShipping =
+      Number(
+        Number(
+          selectedShippingOption.customerPrice
+        ).toFixed(2)
+      );
+
+    if (
+      !Number.isFinite(
+        authoritativeShipping
+      ) ||
+      authoritativeShipping < 0
+    ) {
+      return errorResponse(
+        "Não foi possível validar o valor da entrega.",
+        502
+      );
+    }
+
     /*
      * =====================================================
      * PRODUTOS
@@ -993,13 +1079,11 @@ export async function POST(
       );
 
     /*
-     * Frete e desconto não são aceitos
-     * do navegador.
-     *
-     * Correios e cupons serão incorporados
-     * posteriormente no servidor.
+     * O valor vem da nova cotação feita pelo servidor.
+     * O navegador nunca define o preço do frete.
      */
-    const shipping = 0;
+    const shipping =
+      authoritativeShipping;
     const discount = 0;
 
     const total =
@@ -1370,7 +1454,7 @@ export async function POST(
                     "Pedido realizado",
 
                   message:
-                    "O pedido foi criado e aguarda a confirmação do pagamento.",
+                    `O pedido foi criado com entrega ${selectedShippingOption.companyName} - ${selectedShippingOption.serviceName} e aguarda a confirmação do pagamento.`,
                 },
               },
             },

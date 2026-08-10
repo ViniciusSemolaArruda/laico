@@ -26,6 +26,7 @@ import AddToCartButton from "@/components/AddToCartButton";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header/Header";
 import ProductGallery from "@/components/products/ProductGallery";
+import ProductShippingCalculator from "@/components/products/ProductShippingCalculator";
 
 import {
   prisma,
@@ -147,29 +148,20 @@ export async function generateMetadata({
     await prisma.product.findFirst({
       where: {
         slug,
-
         active:
           true,
-
         archivedAt:
           null,
       },
 
       select: {
-        name:
-          true,
-
+        name: true,
         shortDescription:
           true,
-
-        seoTitle:
-          true,
-
+        seoTitle: true,
         seoDescription:
           true,
-
-        image:
-          true,
+        image: true,
 
         images: {
           where: {
@@ -201,7 +193,6 @@ export async function generateMetadata({
       robots: {
         index:
           false,
-
         follow:
           false,
       },
@@ -225,7 +216,6 @@ export async function generateMetadata({
 
   return {
     title,
-
     description,
 
     alternates: {
@@ -235,9 +225,7 @@ export async function generateMetadata({
 
     openGraph: {
       title,
-
       description,
-
       type:
         "website",
 
@@ -247,7 +235,6 @@ export async function generateMetadata({
               {
                 url:
                   image,
-
                 alt:
                   product.name,
               },
@@ -285,75 +272,45 @@ export default async function ProductPage({
     notFound();
   }
 
-  /*
-   * Selecionamos somente os dados públicos.
-   *
-   * Custo e informações administrativas não
-   * são carregados nesta página.
-   */
   const product =
     await prisma.product.findFirst({
       where: {
         slug,
-
         active:
           true,
-
         archivedAt:
           null,
       },
 
       select: {
-        id:
-          true,
-
-        slug:
-          true,
-
-        sku:
-          true,
-
-        name:
-          true,
+        id: true,
+        slug: true,
+        sku: true,
+        name: true,
 
         shortDescription:
           true,
-
         description:
           true,
 
-        price:
-          true,
-
+        price: true,
         salePrice:
           true,
 
-        image:
-          true,
+        image: true,
 
         religion:
           true,
-
         religions:
           true,
-
         category:
           true,
 
-        stock:
-          true,
-
-        weight:
-          true,
-
-        height:
-          true,
-
-        width:
-          true,
-
-        length:
-          true,
+        stock: true,
+        weight: true,
+        height: true,
+        width: true,
+        length: true,
 
         images: {
           orderBy: [
@@ -361,7 +318,6 @@ export default async function ProductPage({
               isPrimary:
                 "desc",
             },
-
             {
               position:
                 "asc",
@@ -369,14 +325,9 @@ export default async function ProductPage({
           ],
 
           select: {
-            id:
-              true,
-
-            url:
-              true,
-
-            alt:
-              true,
+            id: true,
+            url: true,
+            alt: true,
           },
         },
       },
@@ -399,10 +350,8 @@ export default async function ProductPage({
             {
               id:
                 "legacy-image",
-
               url:
                 product.image,
-
               alt:
                 product.name,
             },
@@ -457,13 +406,9 @@ export default async function ProductPage({
     promotionalPrice !==
     null
       ? Math.round(
-          (
-            (
-              normalPrice -
-              promotionalPrice
-            ) /
-            normalPrice
-          ) *
+          ((normalPrice -
+            promotionalPrice) /
+            normalPrice) *
             100
         )
       : 0;
@@ -483,7 +428,7 @@ export default async function ProductPage({
         : [];
 
   /*
-   * PRODUTOS RELACIONADOS
+   * RELACIONADOS
    */
 
   const related =
@@ -491,10 +436,8 @@ export default async function ProductPage({
       where: {
         active:
           true,
-
         archivedAt:
           null,
-
         category:
           product.category,
 
@@ -512,7 +455,6 @@ export default async function ProductPage({
           featured:
             "desc",
         },
-
         {
           createdAt:
             "desc",
@@ -520,26 +462,14 @@ export default async function ProductPage({
       ],
 
       select: {
-        id:
-          true,
-
-        slug:
-          true,
-
-        name:
-          true,
-
-        image:
-          true,
-
-        price:
-          true,
-
+        id: true,
+        slug: true,
+        name: true,
+        image: true,
+        price: true,
         salePrice:
           true,
-
-        stock:
-          true,
+        stock: true,
 
         images: {
           where: {
@@ -579,7 +509,6 @@ export default async function ProductPage({
             "kg"
           ),
       },
-
       {
         label:
           "Altura",
@@ -590,7 +519,6 @@ export default async function ProductPage({
             "cm"
           ),
       },
-
       {
         label:
           "Largura",
@@ -601,7 +529,6 @@ export default async function ProductPage({
             "cm"
           ),
       },
-
       {
         label:
           "Comprimento",
@@ -638,6 +565,7 @@ export default async function ProductPage({
         <nav className="mb-6 flex min-w-0 flex-wrap items-center gap-2 text-xs text-neutral-600 sm:mb-8 sm:text-[13px]">
           <Home
             size={15}
+            aria-hidden="true"
           />
 
           <Link
@@ -673,9 +601,7 @@ export default async function ProductPage({
           </span>
         </nav>
 
-        {/* CONTEÚDO */}
-
-        <div className="grid grid-cols-1 gap-7 lg:grid-cols-2 xl:grid-cols-[minmax(0,560px)_minmax(0,1fr)_300px]">
+        <div className="grid grid-cols-1 gap-7 lg:grid-cols-2 xl:grid-cols-[minmax(0,560px)_minmax(0,1fr)_320px]">
           {/* GALERIA */}
 
           <ProductGallery
@@ -690,13 +616,9 @@ export default async function ProductPage({
           {/* INFORMAÇÕES */}
 
           <section className="min-w-0">
-            {/* RELIGIÕES */}
-
             <div className="flex flex-wrap gap-2">
               {productReligions.map(
-                (
-                  religion
-                ) => (
+                (religion) => (
                   <Link
                     key={
                       religion
@@ -743,8 +665,6 @@ export default async function ProductPage({
               </p>
             )}
 
-            {/* PREÇO */}
-
             <div className="mt-6">
               {hasPromotion && (
                 <div className="flex items-center gap-3">
@@ -779,15 +699,11 @@ export default async function ProductPage({
               </p>
             </div>
 
-            {/* DESCRIÇÃO */}
-
             <div className="mt-6 whitespace-pre-line text-[15px] leading-7 text-neutral-700">
               {
                 product.description
               }
             </div>
-
-            {/* MEDIDAS */}
 
             {measurements.length >
               0 && (
@@ -819,13 +735,12 @@ export default async function ProductPage({
               </div>
             )}
 
-            {/* DISPONIBILIDADE */}
-
             {product.stock >
             0 ? (
               <p className="mt-5 flex items-center gap-2 text-sm font-bold text-green-700">
                 <CheckCircle
                   size={17}
+                  aria-hidden="true"
                 />
 
                 Em estoque:{" "}
@@ -837,38 +752,44 @@ export default async function ProductPage({
             ) : (
               <p className="mt-5 text-sm font-bold text-red-600">
                 Produto
-                indisponível
-                no momento
+                indisponível no
+                momento
               </p>
             )}
           </section>
 
-          {/* COMPRA */}
+          {/* COMPRA E FRETE */}
 
-          <aside className="h-fit rounded-2xl border border-[#e8dcc2] bg-white shadow-sm lg:col-span-2 xl:col-span-1">
+          <aside className="h-fit overflow-hidden rounded-2xl border border-[#e8dcc2] bg-white shadow-sm lg:col-span-2 xl:col-span-1">
             <div className="border-b border-[#eee2cc] p-5">
               <AddToCartButton
                 product={{
                   id:
                     product.id,
-
                   slug:
                     product.slug,
-
                   name:
                     product.name,
-
                   image:
                     primaryImage,
-
                   price:
                     currentPrice,
-
                   stock:
                     product.stock,
                 }}
               />
             </div>
+
+            {product.stock >
+              0 && (
+              <div className="border-b border-[#eee2cc] p-5">
+                <ProductShippingCalculator
+                  productId={
+                    product.id
+                  }
+                />
+              </div>
+            )}
 
             <div className="space-y-5 p-5">
               <Benefit
@@ -876,7 +797,7 @@ export default async function ProductPage({
                   <Truck />
                 }
                 title="Entrega para todo o Brasil"
-                text="Envio acompanhado e seguro."
+                text="Valor calculado de acordo com o CEP."
               />
 
               <Benefit
@@ -915,17 +836,14 @@ export default async function ProductPage({
           </h2>
 
           <p className="mt-1 text-sm text-neutral-500">
-            Outros
-            produtos da
-            mesma
+            Outros produtos
+            da mesma
             categoria
           </p>
 
           <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-4">
             {related.map(
-              (
-                item
-              ) => {
+              (item) => {
                 const relatedNormalPrice =
                   Number(
                     item.price
@@ -1011,8 +929,7 @@ export default async function ProductPage({
             {related.length ===
               0 && (
               <p className="col-span-full rounded-2xl border border-[#e8dcc2] bg-white p-6 text-neutral-500">
-                Nenhum
-                produto
+                Nenhum produto
                 relacionado
                 encontrado.
               </p>
@@ -1030,6 +947,7 @@ export default async function ProductPage({
       >
         <MessageCircle
           size={30}
+          aria-hidden="true"
         />
       </Link>
     </main>

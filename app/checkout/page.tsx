@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  CheckCircle2,
   CreditCard,
+  LoaderCircle,
   Lock,
   MapPin,
   MessageCircle,
@@ -107,6 +109,37 @@ type CheckoutResponse = {
   };
 };
 
+type ShippingOption = {
+  serviceId: string;
+  serviceName: string;
+  companyId: string | number;
+  companyName: string;
+  customerPrice: number;
+  deliveryTime: number;
+  deliveryRange: {
+    min: number;
+    max: number;
+  };
+  currency: string;
+  freeShipping: boolean;
+};
+
+type ShippingQuoteResponse = {
+  success?: boolean;
+  destinationCep?: string;
+  subtotal?: number;
+  freeShippingApplied?: boolean;
+  expiresAt?: string;
+  options?: ShippingOption[];
+  error?: string;
+};
+
+type StoredShippingSelection =
+  ShippingOption & {
+    destinationCep: string;
+    expiresAt?: string;
+  };
+
 const initialForm: CheckoutForm = {
   name: "",
   cpf: "",
@@ -201,6 +234,136 @@ function normalizeCartItems(
     .slice(0, 50);
 }
 
+function normalizeCep(
+  value: string
+): string {
+  return value
+    .replace(/\D/g, "")
+    .slice(0, 8);
+}
+
+function formatCep(
+  value: string
+): string {
+  const digits =
+    normalizeCep(value);
+
+  if (digits.length <= 5) {
+    return digits;
+  }
+
+  return `${digits.slice(
+    0,
+    5
+  )}-${digits.slice(5)}`;
+}
+
+function isShippingOption(
+  value: unknown
+): value is ShippingOption {
+  if (
+    typeof value !== "object" ||
+    value === null
+  ) {
+    return false;
+  }
+
+  const option =
+    value as Partial<ShippingOption>;
+
+  return (
+    typeof option.serviceId ===
+      "string" &&
+    option.serviceId.length > 0 &&
+    typeof option.serviceName ===
+      "string" &&
+    typeof option.companyName ===
+      "string" &&
+    typeof option.customerPrice ===
+      "number" &&
+    Number.isFinite(
+      option.customerPrice
+    ) &&
+    option.customerPrice >= 0 &&
+    typeof option.deliveryTime ===
+      "number" &&
+    typeof option.deliveryRange ===
+      "object" &&
+    option.deliveryRange !== null &&
+    Number.isFinite(
+      Number(
+        option.deliveryRange.min
+      )
+    ) &&
+    Number.isFinite(
+      Number(
+        option.deliveryRange.max
+      )
+    )
+  );
+}
+
+function readStoredShippingSelection(
+  value: string | null
+): StoredShippingSelection | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed =
+      JSON.parse(value) as unknown;
+
+    if (
+      !isShippingOption(parsed)
+    ) {
+      return null;
+    }
+
+    const storedMetadata =
+      parsed as ShippingOption & {
+        destinationCep?: unknown;
+        expiresAt?: unknown;
+      };
+
+    if (
+      typeof storedMetadata.destinationCep !==
+        "string" ||
+      normalizeCep(
+        storedMetadata.destinationCep
+      ).length !== 8
+    ) {
+      return null;
+    }
+
+    if (
+      typeof storedMetadata.expiresAt ===
+        "string" &&
+      new Date(
+        storedMetadata.expiresAt
+      ).getTime() <= Date.now()
+    ) {
+      return null;
+    }
+
+    return {
+      ...parsed,
+      destinationCep:
+        normalizeCep(
+          storedMetadata.destinationCep
+        ),
+
+      expiresAt:
+        typeof storedMetadata.expiresAt ===
+          "string"
+          ? storedMetadata.expiresAt
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function CheckoutPage() {
   const [
     cartItems,
@@ -253,6 +416,38 @@ export default function CheckoutPage() {
       "pix"
     );
 
+  const [
+    shippingOptions,
+    setShippingOptions,
+  ] = useState<ShippingOption[]>(
+    []
+  );
+
+  const [
+    selectedShipping,
+    setSelectedShipping,
+  ] =
+    useState<StoredShippingSelection | null>(
+      null
+    );
+
+  const [
+    shippingLoading,
+    setShippingLoading,
+  ] = useState(false);
+
+  const [
+    shippingError,
+    setShippingError,
+  ] = useState("");
+
+  const [
+    shippingQuoteExpiresAt,
+    setShippingQuoteExpiresAt,
+  ] = useState<string | null>(
+    null
+  );
+
   /*
    * Impede dois envios antes que o React
    * atualize o estado loading.
@@ -296,6 +491,40 @@ export default function CheckoutPage() {
             validItems
           );
 
+          const storedShipping =
+            readStoredShippingSelection(
+              window.sessionStorage.getItem(
+                "laico-shipping-selection"
+              )
+            );
+
+          if (storedShipping) {
+            setSelectedShipping(
+              storedShipping
+            );
+
+            setShippingOptions([
+              storedShipping,
+            ]);
+
+            setShippingQuoteExpiresAt(
+              storedShipping.expiresAt ??
+                null
+            );
+
+            setForm((current) => ({
+              ...current,
+              cep:
+                formatCep(
+                  storedShipping.destinationCep
+                ),
+            }));
+          } else {
+            window.sessionStorage.removeItem(
+              "laico-shipping-selection"
+            );
+          }
+
           if (
             validItems.length === 0
           ) {
@@ -332,7 +561,10 @@ export default function CheckoutPage() {
       );
     }, [cartItems]);
 
-  const localShipping = 0;
+  const localShipping =
+    selectedShipping
+      ?.customerPrice ??
+    0;
 
   const localTotal =
     localSubtotal +
@@ -346,14 +578,207 @@ export default function CheckoutPage() {
       return;
     }
 
+    const nextValue =
+      field === "cep"
+        ? formatCep(value)
+        : value;
+
     setForm((current) => ({
       ...current,
-      [field]: value,
+      [field]: nextValue,
     }));
+
+    if (
+      field === "cep" &&
+      selectedShipping &&
+      normalizeCep(nextValue) !==
+        selectedShipping.destinationCep
+    ) {
+      setSelectedShipping(null);
+      setShippingOptions([]);
+      setShippingError("");
+      setShippingQuoteExpiresAt(
+        null
+      );
+
+      window.sessionStorage.removeItem(
+        "laico-shipping-selection"
+      );
+    }
 
     if (errorMessage) {
       setErrorMessage("");
     }
+  }
+
+  async function calculateShipping() {
+    if (
+      shippingLoading ||
+      orderId
+    ) {
+      return;
+    }
+
+    const destinationCep =
+      normalizeCep(form.cep);
+
+    if (
+      destinationCep.length !== 8
+    ) {
+      setShippingError(
+        "Informe um CEP válido."
+      );
+
+      return;
+    }
+
+    if (
+      cartItems.length === 0
+    ) {
+      setShippingError(
+        "Nenhum produto foi encontrado para calcular a entrega."
+      );
+
+      return;
+    }
+
+    setShippingLoading(true);
+    setShippingError("");
+    setShippingOptions([]);
+    setSelectedShipping(null);
+    setShippingQuoteExpiresAt(
+      null
+    );
+
+    window.sessionStorage.removeItem(
+      "laico-shipping-selection"
+    );
+
+    try {
+      const response =
+        await fetch(
+          "/api/shipping/quote",
+          {
+            method: "POST",
+
+            credentials:
+              "same-origin",
+
+            cache: "no-store",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              destinationCep,
+
+              items:
+                cartItems.map(
+                  (item) => ({
+                    productId:
+                      item.id,
+
+                    quantity:
+                      item.quantity,
+                  })
+                ),
+            }),
+          }
+        );
+
+      const data =
+        (await response
+          .json()
+          .catch(
+            () => ({})
+          )) as ShippingQuoteResponse;
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Não foi possível calcular a entrega."
+        );
+      }
+
+      const validOptions =
+        Array.isArray(
+          data.options
+        )
+          ? data.options.filter(
+              isShippingOption
+            )
+          : [];
+
+      if (
+        validOptions.length === 0
+      ) {
+        throw new Error(
+          "Nenhuma modalidade de entrega está disponível para este CEP."
+        );
+      }
+
+      setShippingOptions(
+        validOptions
+      );
+
+      setShippingQuoteExpiresAt(
+        typeof data.expiresAt ===
+          "string"
+          ? data.expiresAt
+          : null
+      );
+    } catch (error) {
+      setShippingError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível calcular a entrega."
+      );
+    } finally {
+      setShippingLoading(false);
+    }
+  }
+
+  function selectShipping(
+    option: ShippingOption
+  ) {
+    if (orderId) {
+      return;
+    }
+
+    const destinationCep =
+      normalizeCep(form.cep);
+
+    if (
+      destinationCep.length !== 8
+    ) {
+      setShippingError(
+        "Informe um CEP válido."
+      );
+
+      return;
+    }
+
+    const selection:
+      StoredShippingSelection = {
+      ...option,
+      destinationCep,
+      expiresAt:
+        shippingQuoteExpiresAt ??
+        undefined,
+    };
+
+    setSelectedShipping(
+      selection
+    );
+
+    setShippingError("");
+
+    window.sessionStorage.setItem(
+      "laico-shipping-selection",
+      JSON.stringify(selection)
+    );
   }
 
   function validateForm(): string | null {
@@ -384,6 +809,22 @@ export default function CheckoutPage() {
       )
     ) {
       return "Informe um e-mail válido.";
+    }
+
+    if (
+      normalizeCep(
+        form.cep
+      ).length !== 8
+    ) {
+      return "Informe um CEP válido.";
+    }
+
+    if (
+      !selectedShipping ||
+      selectedShipping.destinationCep !==
+        normalizeCep(form.cep)
+    ) {
+      return "Calcule e selecione uma modalidade de entrega.";
     }
 
     return null;
@@ -487,6 +928,12 @@ export default function CheckoutPage() {
                       item.quantity,
                   })
                 ),
+
+              shipping: {
+                serviceId:
+                  selectedShipping
+                    ?.serviceId,
+              },
             }),
           }
         );
@@ -1055,24 +1502,148 @@ export default function CheckoutPage() {
                   </label>
                 </div>
 
-                <div className="mt-5 flex gap-3 rounded-[6px] border border-[#ead9b8] bg-[#fffdf8] p-4">
-                  <Truck
-                    className="shrink-0 text-[#b98218]"
-                    aria-hidden="true"
-                  />
+                <div className="mt-5 rounded-[8px] border border-[#ead9b8] bg-[#fffdf8] p-4">
+                  <div className="flex items-start gap-3">
+                    <Truck
+                      className="mt-0.5 shrink-0 text-[#b98218]"
+                      aria-hidden="true"
+                    />
 
-                  <div>
-                    <p className="text-[13px] font-bold">
-                      Previsão de entrega
-                    </p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-bold">
+                        Modalidade de entrega
+                      </p>
 
-                    <p className="text-[12px] text-neutral-500">
-                      O prazo será calculado
-                      quando a integração com
-                      os Correios estiver
-                      configurada.
-                    </p>
+                      <p className="mt-1 text-[12px] leading-5 text-neutral-500">
+                        Calcule o frete e escolha uma opção antes de continuar.
+                      </p>
+                    </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      calculateShipping
+                    }
+                    disabled={
+                      shippingLoading ||
+                      Boolean(orderId) ||
+                      normalizeCep(
+                        form.cep
+                      ).length !== 8 ||
+                      cartItems.length ===
+                        0
+                    }
+                    className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-[6px] bg-[#20170f] px-4 text-[13px] font-bold text-white transition hover:bg-[#38291d] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {shippingLoading ? (
+                      <LoaderCircle
+                        size={17}
+                        className="animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Truck
+                        size={17}
+                        aria-hidden="true"
+                      />
+                    )}
+
+                    {shippingLoading
+                      ? "Calculando..."
+                      : shippingOptions.length >
+                          0
+                        ? "Calcular novamente"
+                        : "Calcular entrega"}
+                  </button>
+
+                  {shippingError && (
+                    <div
+                      role="alert"
+                      className="mt-3 rounded-[6px] border border-red-200 bg-red-50 px-3 py-2 text-[12px] leading-5 text-red-700"
+                    >
+                      {shippingError}
+                    </div>
+                  )}
+
+                  {shippingOptions.length >
+                    0 && (
+                    <div className="mt-4 space-y-2">
+                      {shippingOptions.map(
+                        (option) => {
+                          const selected =
+                            selectedShipping
+                              ?.serviceId ===
+                            option.serviceId;
+
+                          return (
+                            <button
+                              type="button"
+                              key={
+                                option.serviceId
+                              }
+                              onClick={() =>
+                                selectShipping(
+                                  option
+                                )
+                              }
+                              disabled={
+                                Boolean(
+                                  orderId
+                                )
+                              }
+                              className={`flex w-full items-center gap-3 rounded-[7px] border p-3 text-left transition disabled:cursor-not-allowed ${
+                                selected
+                                  ? "border-[#b98218] bg-[#fff8e8] ring-2 ring-[#b98218]/10"
+                                  : "border-[#e8dcc2] bg-white hover:border-[#b98218]"
+                              }`}
+                            >
+                              <span
+                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                                  selected
+                                    ? "border-[#b98218] bg-[#b98218] text-white"
+                                    : "border-neutral-300 bg-white text-transparent"
+                                }`}
+                              >
+                                <CheckCircle2
+                                  size={14}
+                                  aria-hidden="true"
+                                />
+                              </span>
+
+                              <span className="min-w-0 flex-1">
+                                <strong className="block truncate text-[13px] text-[#20170f]">
+                                  {
+                                    option.companyName
+                                  }{" "}
+                                  -{" "}
+                                  {
+                                    option.serviceName
+                                  }
+                                </strong>
+
+                                <span className="mt-0.5 block text-[11px] text-neutral-500">
+                                  {option.deliveryRange.min ===
+                                  option.deliveryRange.max
+                                    ? `${option.deliveryRange.max} dia(s) útil(eis)`
+                                    : `${option.deliveryRange.min} a ${option.deliveryRange.max} dias úteis`}
+                                </span>
+                              </span>
+
+                              <strong className="shrink-0 text-[13px] text-[#b98218]">
+                                {option.customerPrice ===
+                                0
+                                  ? "Grátis"
+                                  : formatPrice(
+                                      option.customerPrice
+                                    )}
+                              </strong>
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+                  )}
                 </div>
               </section>
             </div>
@@ -1166,7 +1737,8 @@ export default function CheckoutPage() {
                     disabled={
                       loading ||
                       cartItems.length ===
-                        0
+                        0 ||
+                      !selectedShipping
                     }
                     className="mt-6 flex h-[52px] w-full items-center justify-center gap-2 rounded-[5px] bg-gradient-to-r from-[#b8872b] via-[#d8b35a] to-[#b98218] font-bold text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -1309,14 +1881,33 @@ export default function CheckoutPage() {
                   </div>
 
                   <div className="flex justify-between">
-                    <span>
-                      Frete
-                    </span>
+                    <div>
+                      <span className="block">
+                        Frete
+                      </span>
 
-                    <strong>
-                      {formatPrice(
-                        localShipping
+                      {selectedShipping && (
+                        <span className="mt-0.5 block max-w-[210px] text-[11px] text-neutral-500">
+                          {
+                            selectedShipping.companyName
+                          }{" "}
+                          -{" "}
+                          {
+                            selectedShipping.serviceName
+                          }
+                        </span>
                       )}
+                    </div>
+
+                    <strong className="shrink-0">
+                      {selectedShipping
+                        ? localShipping ===
+                          0
+                          ? "Grátis"
+                          : formatPrice(
+                              localShipping
+                            )
+                        : "A calcular"}
                     </strong>
                   </div>
 
