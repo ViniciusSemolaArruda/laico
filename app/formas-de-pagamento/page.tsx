@@ -180,7 +180,7 @@ export default function PaymentMethodsPage() {
                   <ArrowRight size={18} aria-hidden="true" />
                 </Link>
 
-                <Link href="/perguntas-frequentes" className={styles.secondaryButton}>
+                <Link href="/contato#duvidas-frequentes" className={styles.secondaryButton}>
                   Tirar dúvidas
                 </Link>
               </div>
