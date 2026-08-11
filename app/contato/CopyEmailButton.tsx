@@ -1,32 +1,59 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import styles from "./ContactPage.module.css";
+type CopyEmailButtonProps = {
+  email: string;
+};
 
-export default function CopyEmailButton({ email }: { email: string }) {
+export default function CopyEmailButton({ email }: CopyEmailButtonProps) {
   const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function copyEmail() {
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  async function handleCopy() {
     try {
       await navigator.clipboard.writeText(email);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2200);
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = setTimeout(() => {
+        setCopied(false);
+      }, 2500);
     } catch {
-      setCopied(false);
+      window.location.href = `mailto:${email}`;
     }
   }
 
   return (
     <button
       type="button"
-      onClick={copyEmail}
-      className={styles.copyButton}
+      onClick={handleCopy}
+      aria-label={copied ? "E-mail copiado" : "Copiar e-mail de atendimento"}
       aria-live="polite"
     >
-      {copied ? <Check size={17} /> : <Copy size={17} />}
-      {copied ? "E-mail copiado" : "Copiar e-mail"}
+      {copied ? (
+        <>
+          <Check size={17} aria-hidden="true" />
+          Copiado
+        </>
+      ) : (
+        <>
+          <Copy size={17} aria-hidden="true" />
+          Copiar e-mail
+        </>
+      )}
     </button>
   );
 }

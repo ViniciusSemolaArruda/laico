@@ -649,7 +649,8 @@ function InfoCard({
   icon,
   title,
   text,
-  link,
+  href,
+  linkLabel,
 }: {
   icon:
     ReactNode;
@@ -660,7 +661,10 @@ function InfoCard({
   text:
     string;
 
-  link:
+  href:
+    string;
+
+  linkLabel:
     string;
 }) {
   return (
@@ -682,12 +686,17 @@ function InfoCard({
           }
         </p>
 
-        <p className="mt-3 text-[13px] font-medium text-[#cfa74a]">
-          {
-            link
-          }{" "}
-          →
-        </p>
+        <Link
+          href={href}
+          className="mt-3 inline-flex items-center gap-1 text-[13px] font-bold text-[#c18a1a] transition hover:text-[#9f6f14] hover:underline"
+          aria-label={`${linkLabel}: ${title}`}
+        >
+          {linkLabel}
+          <ChevronRight
+            size={14}
+            aria-hidden="true"
+          />
+        </Link>
       </div>
     </div>
   );
@@ -1579,7 +1588,8 @@ export default async function HomePage({
                 }
                 title="Entrega para todo o Brasil"
                 text="Enviamos para todas as regiões com segurança e agilidade."
-                link="Saiba mais"
+                href="/prazo-de-entrega"
+                linkLabel="Saiba mais"
               />
 
               <InfoCard
@@ -1592,7 +1602,8 @@ export default async function HomePage({
                 }
                 title="Pagamento seguro"
                 text="Aceitamos Pix, cartão de crédito, débito e boleto."
-                link="Formas de pagamento"
+                href="/formas-de-pagamento"
+                linkLabel="Formas de pagamento"
               />
 
               <InfoCard
@@ -1605,7 +1616,8 @@ export default async function HomePage({
                 }
                 title="Respeito e diversidade"
                 text="Valorizamos todas as religiões, culturas e tradições."
-                link="Nossa missão"
+                href="/sobre#nossa-missao"
+                linkLabel="Nossa missão"
               />
             </div>
           </div>
@@ -1616,7 +1628,7 @@ export default async function HomePage({
 
       {/* CONTATO */}
 
-      <Link
+      {/* <Link
         href="/contato"
         aria-label="Fale conosco"
         className="fixed bottom-6 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#24c45a] text-white shadow-2xl sm:bottom-8 sm:right-8 sm:h-[62px] sm:w-[62px]"
@@ -1624,7 +1636,7 @@ export default async function HomePage({
         <MessageCircle
           size={30}
         />
-      </Link>
+      </Link> */}
     </main>
   );
 }

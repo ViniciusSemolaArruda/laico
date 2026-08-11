@@ -48,7 +48,7 @@ const legalLinks = [
   { label: "Prazo de entrega", href: "/prazo-de-entrega" },
   {
     label: "Perguntas frequentes",
-    href: "/perguntas-frequentes",
+    href: "/contato#duvidas-frequentes",
   },
 ] as const;
 

@@ -940,7 +940,7 @@ export default async function ProductPage({
 
       <Footer />
 
-      <Link
+      {/* <Link
         href="/contato"
         aria-label="Fale conosco"
         className="fixed bottom-6 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#24c45a] text-white shadow-2xl sm:bottom-8 sm:right-8 sm:h-[62px] sm:w-[62px]"
@@ -949,7 +949,7 @@ export default async function ProductPage({
           size={30}
           aria-hidden="true"
         />
-      </Link>
+      </Link> */}
     </main>
   );
 }

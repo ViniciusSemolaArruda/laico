@@ -1,17 +1,24 @@
-import {
-  ChevronRight,
-  CircleHelp,
-  Clock3,
-  Home,
-  Mail,
-  PackageCheck,
-  ShieldCheck,
-  Truck,
-} from "lucide-react";
-
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+
+import {
+  ArrowRight,
+  BadgeCheck,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  Clock3,
+  Headphones,
+  Home,
+  Mail,
+  MessageCircle,
+  PackageCheck,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Truck,
+} from "lucide-react";
 
 import Footer from "@/components/Footer";
 import Header from "@/components/Header/Header";
@@ -20,9 +27,9 @@ import CopyEmailButton from "./CopyEmailButton";
 import styles from "./ContactPage.module.css";
 
 export const metadata: Metadata = {
-  title: "Fale Conosco | Laico",
+  title: "Fale conosco | Laico",
   description:
-    "Entre em contato com o atendimento da Laico e consulte respostas sobre pedidos, pagamentos, entregas, trocas e cancelamentos.",
+    "Entre em contato com a Laico e consulte respostas sobre pedidos, pagamentos, entregas, trocas e cancelamentos.",
 };
 
 const orderQuestions = [
@@ -30,10 +37,10 @@ const orderQuestions = [
     question: "Como acompanho o status do meu pedido?",
     answer: (
       <>
-        Acesse a página <Link href="/meus-pedidos">Meus pedidos</Link> usando
-        sua conta. Se a compra foi feita como visitante, utilize o link seguro
-        enviado ao e-mail informado no checkout. O status é atualizado conforme
-        as confirmações de pagamento e as etapas de preparação e envio.
+        Acesse <Link href="/meus-pedidos">Meus pedidos</Link> usando sua conta.
+        Se a compra foi feita como visitante, utilize o link seguro enviado ao
+        e-mail informado no checkout. O status é atualizado conforme as
+        confirmações de pagamento e as etapas de preparação e envio.
       </>
     ),
   },
@@ -42,68 +49,58 @@ const orderQuestions = [
     answer: (
       <>
         A aprovação depende do meio de pagamento. O Pix normalmente é
-        identificado em pouco tempo, enquanto boleto e cartão podem depender da
-        compensação bancária ou da análise do emissor. O pedido será atualizado
-        automaticamente assim que o provedor confirmar o pagamento.
+        identificado rapidamente, enquanto boleto e cartão podem depender de
+        compensação bancária ou análise do emissor. O pedido será atualizado
+        quando o provedor confirmar o pagamento.
       </>
     ),
   },
   {
-    question:
-      "Paguei por Pix ou boleto e recebi um e-mail de cancelamento. O que devo fazer?",
+    question: "Paguei por Pix ou boleto e recebi um aviso de cancelamento. O que faço?",
     answer: (
       <>
-        Confira se o pagamento foi realizado antes do vencimento e guarde o
-        comprovante. Depois, envie ao atendimento o número do pedido e o
-        comprovante, sem compartilhar senha ou dados bancários sensíveis. Nossa
-        equipe verificará a confirmação junto ao provedor de pagamentos.
+        Verifique se o pagamento foi realizado antes do vencimento e guarde o
+        comprovante. Envie ao atendimento o número do pedido e o comprovante,
+        sem compartilhar senha ou dados bancários sensíveis.
       </>
     ),
   },
   {
-    question:
-      "Paguei com cartão e recebi um e-mail de cancelamento. O que aconteceu?",
+    question: "Paguei com cartão e meu pedido foi cancelado. O que aconteceu?",
     answer: (
       <>
         A transação pode ter sido recusada pelo emissor, pelo limite disponível
-        ou por uma análise de segurança. A Laico não recebe o motivo bancário
-        detalhado. Consulte o aplicativo ou a central do cartão e, se desejar,
-        faça uma nova compra utilizando outro meio de pagamento.
+        ou por análise de segurança. A Laico não recebe o motivo bancário
+        detalhado. Consulte a central do cartão antes de tentar novamente.
       </>
     ),
   },
   {
-    question:
-      "Finalizei o pedido, mas quero trocar um dos produtos. O que devo fazer?",
+    question: "Quero trocar um item de um pedido já finalizado. O que faço?",
     answer: (
       <>
-        Um pedido concluído não pode ter seus itens editados. Entre em contato o
-        quanto antes. Se ele ainda não tiver sido separado ou enviado,
-        verificaremos a possibilidade de cancelamento para que uma nova compra
-        seja realizada. Depois do recebimento, consulte nossa página de{" "}
+        Um pedido concluído não pode ter seus itens editados. Entre em contato
+        imediatamente. Depois do recebimento, consulte nossa página de{" "}
         <Link href="/trocas-e-devolucoes">Trocas e devoluções</Link>.
       </>
     ),
   },
   {
-    question:
-      "O pedido está aguardando pagamento. Como solicito o cancelamento?",
+    question: "O pedido está aguardando pagamento. Como solicito o cancelamento?",
     answer: (
       <>
-        Pedidos não pagos podem ser cancelados automaticamente após o vencimento
-        da cobrança. Se precisar de atendimento antes disso, envie o número do
-        pedido por e-mail. Não efetue o pagamento de uma cobrança que você
-        deseja cancelar.
+        Pedidos não pagos podem ser cancelados automaticamente após o vencimento.
+        Se precisar de atendimento antes disso, envie o número do pedido por
+        e-mail e não pague uma cobrança que deseja cancelar.
       </>
     ),
   },
   {
-    question: "Posso adicionar um produto a um pedido já finalizado?",
+    question: "Posso adicionar um produto a um pedido finalizado?",
     answer: (
       <>
         Não. Por segurança, valores e itens de um pedido finalizado não podem ser
-        alterados. O produto adicional deverá ser comprado em um novo pedido,
-        com cálculo próprio de pagamento e entrega.
+        alterados. O produto adicional deverá ser comprado em um novo pedido.
       </>
     ),
   },
@@ -114,9 +111,9 @@ const deliveryQuestions = [
     question: "Como acompanho a entrega da minha encomenda?",
     answer: (
       <>
-        Quando a encomenda for postada e houver código de rastreio, ele ficará
-        disponível no acompanhamento do pedido. Você também poderá receber a
-        atualização no e-mail utilizado na compra.
+        Quando houver postagem e código de rastreamento, ele ficará disponível
+        no acompanhamento do pedido. Você também poderá receber a atualização
+        no e-mail utilizado na compra.
       </>
     ),
   },
@@ -124,9 +121,8 @@ const deliveryQuestions = [
     question: "Como o prazo e o valor do frete são calculados?",
     answer: (
       <>
-        O cálculo considera o CEP de destino, a modalidade escolhida e os dados
-        reais dos produtos, como peso e dimensões. Consulte mais detalhes em{" "}
-        <Link href="/prazo-de-entrega">Frete e prazo de entrega</Link>.
+        O cálculo considera CEP, modalidade e dados reais dos produtos, como peso
+        e dimensões. Consulte <Link href="/prazo-de-entrega">Frete e prazo</Link>.
       </>
     ),
   },
@@ -134,20 +130,19 @@ const deliveryQuestions = [
     question: "Meu pedido está atrasado. O que devo fazer?",
     answer: (
       <>
-        Primeiro, consulte as atualizações do rastreamento. Se a estimativa já
-        tiver terminado ou o rastreio estiver sem movimentação por um período
-        incomum, envie o número do pedido ao atendimento para verificarmos a
-        situação com a transportadora.
+        Consulte primeiro o rastreamento. Se a estimativa terminou ou não há
+        movimentação por um período incomum, envie o número do pedido ao nosso
+        atendimento.
       </>
     ),
   },
   {
-    question: "Posso alterar o endereço depois de finalizar a compra?",
+    question: "Posso alterar o endereço depois da compra?",
     answer: (
       <>
         Entre em contato imediatamente. Por segurança, a alteração pode não ser
-        possível depois da separação ou postagem. Sempre confira CEP, rua,
-        número, complemento, bairro, cidade e estado antes de pagar.
+        possível depois da separação ou da postagem. Confira todos os dados antes
+        de finalizar o pagamento.
       </>
     ),
   },
@@ -162,28 +157,102 @@ export default function ContactPage() {
     <main className={styles.page}>
       <Header />
 
-      <section className={styles.container}>
-        <nav className={styles.breadcrumb} aria-label="Navegação estrutural">
-          <Link href="/">
-            <Home size={14} aria-hidden="true" />
-            Início
-          </Link>
+      <section className={styles.heroSection}>
+        <div className={styles.heroPattern} />
+        <div className={styles.heroGlow} />
 
-          <ChevronRight size={13} aria-hidden="true" />
-          <span aria-current="page">Fale conosco</span>
-        </nav>
+        <div className={styles.container}>
+          <nav className={styles.breadcrumb} aria-label="Navegação estrutural">
+            <Link href="/">
+              <Home size={15} aria-hidden="true" />
+              Início
+            </Link>
+            <ChevronRight size={14} aria-hidden="true" />
+            <span aria-current="page">Fale conosco</span>
+          </nav>
 
-        <header className={styles.hero}>
-          <span className={styles.eyebrow}>Central de atendimento</span>
+          <div className={styles.heroGrid}>
+            <div className={styles.heroContent}>
+              <span className={styles.eyebrow}>
+                <Headphones size={17} aria-hidden="true" />
+                Central de atendimento
+              </span>
 
-          <h1>Fale conosco</h1>
+              <h1>Fale com a equipe da Laico</h1>
 
+              <p>
+                O e-mail é nosso principal canal de atendimento. Todas as
+                mensagens são analisadas com atenção, segurança e clareza.
+              </p>
+
+              <a href={`mailto:${supportEmail}`} className={styles.heroButton}>
+                Enviar e-mail
+                <Send size={17} aria-hidden="true" />
+              </a>
+            </div>
+
+            <div className={styles.heroVisual} aria-hidden="true">
+              <div className={styles.supportCard}>
+                <div className={styles.supportTop}>
+                  <span>ATENDIMENTO LAICO</span>
+                  <BadgeCheck size={21} />
+                </div>
+
+                <div className={styles.supportSymbol}>
+                  <MessageCircle size={62} />
+                  <Sparkles size={24} className={styles.supportSpark} />
+                </div>
+
+                <strong>Estamos aqui para ajudar</strong>
+                <p>Pedidos, pagamentos, entregas, trocas e outras dúvidas.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.serviceStrip}>
+        <div className={`${styles.container} ${styles.serviceGrid}`}>
+          <div>
+            <Mail size={23} />
+            <span>
+              <strong>Canal oficial</strong>
+              Atendimento por e-mail
+            </span>
+          </div>
+          <div>
+            <Clock3 size={23} />
+            <span>
+              <strong>Horário comercial</strong>
+              Segunda a sábado
+            </span>
+          </div>
+          <div>
+            <ShieldCheck size={23} />
+            <span>
+              <strong>Contato seguro</strong>
+              Nunca pedimos sua senha
+            </span>
+          </div>
+          <div>
+            <CircleHelp size={23} />
+            <span>
+              <strong>Central de ajuda</strong>
+              Respostas para dúvidas comuns
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section className={`${styles.container} ${styles.contactSection}`}>
+        <div className={styles.sectionHeading}>
+          <span>ATENDIMENTO POR E-MAIL</span>
+          <h2>Envie sua mensagem para nossa equipe</h2>
           <p>
-            O e-mail é o nosso principal canal de atendimento. Todas as
-            mensagens são analisadas pela equipe e respondidas com atenção,
-            segurança e clareza.
+            Informe o número do pedido quando sua dúvida estiver relacionada a
+            uma compra. Isso ajuda a localizar o atendimento com mais rapidez.
           </p>
-        </header>
+        </div>
 
         <section className={styles.emailCard}>
           <div className={styles.emailIcon}>
@@ -191,13 +260,10 @@ export default function ContactPage() {
           </div>
 
           <div className={styles.emailContent}>
-            <span>Atendimento por e-mail</span>
-
+            <span>E-mail oficial de atendimento</span>
             <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
-
             <p>
-              Fique tranquilo: sua solicitação será respondida de maneira clara
-              e eficaz dentro do nosso horário de atendimento.
+              Sua solicitação será respondida dentro do nosso horário de atendimento.
             </p>
           </div>
 
@@ -209,75 +275,76 @@ export default function ContactPage() {
             <Clock3 aria-hidden="true" />
             <div>
               <strong>Horário de atendimento</strong>
-              <p>
-                Segunda a sexta, das 8h às 18h
-                <br />
-                Sábado, das 8h às 12h
-              </p>
+              <p>Segunda a sexta, das 8h às 18h<br />Sábado, das 8h às 12h</p>
             </div>
           </article>
 
           <article className={styles.infoCard}>
             <ShieldCheck aria-hidden="true" />
             <div>
-              <strong>Atendimento seguro</strong>
-              <p>
-                Nunca solicitamos sua senha, código de segurança ou número
-                completo do cartão.
-              </p>
+              <strong>Atendimento protegido</strong>
+              <p>Nunca envie senha, CVV, token ou número completo do cartão.</p>
             </div>
           </article>
         </div>
 
         <aside className={styles.emailNotice}>
-          <Mail size={20} aria-hidden="true" />
+          <Mail size={21} aria-hidden="true" />
           <div>
             <strong>Não encontrou nossa resposta?</strong>
             <p>
-              No Gmail, confira as abas Spam e Promoções. No Outlook ou Hotmail,
-              confira Lixo eletrônico e a pasta Outros. Adicione nosso endereço
-              aos seus contatos para facilitar o recebimento.
+              No Gmail, confira Spam e Promoções. No Outlook ou Hotmail, consulte
+              Lixo eletrônico e Outros. Adicione nosso endereço aos seus contatos.
             </p>
           </div>
         </aside>
+      </section>
 
-        <section className={styles.faqSection}>
-          <header className={styles.sectionHeader}>
-            <CircleHelp size={28} aria-hidden="true" />
-            <div>
-              <span>Central de ajuda</span>
-              <h2>Dúvidas frequentes</h2>
-              <p>
-                Consulte as respostas abaixo. Se não encontrar o que procura,
-                envie sua dúvida para o nosso atendimento por e-mail.
-              </p>
-            </div>
+      <section id="duvidas-frequentes" className={styles.faqSection}>
+        <div className={styles.container}>
+          <header className={styles.sectionHeading}>
+            <span>CENTRAL DE AJUDA</span>
+            <h2>Dúvidas frequentes</h2>
+            <p>
+              Consulte as respostas abaixo. Se não encontrar o que procura,
+              envie sua dúvida para o atendimento.
+            </p>
           </header>
 
-          <FaqGroup
-            icon={<PackageCheck size={23} aria-hidden="true" />}
-            title="Dúvidas sobre o seu pedido"
-            items={orderQuestions}
-          />
+          <div className={styles.faqColumns}>
+            <FaqGroup
+              icon={<PackageCheck size={23} aria-hidden="true" />}
+              title="Dúvidas sobre seu pedido"
+              items={orderQuestions}
+            />
 
-          <FaqGroup
-            icon={<Truck size={23} aria-hidden="true" />}
-            title="Dúvidas sobre a entrega"
-            items={deliveryQuestions}
-          />
-        </section>
+            <FaqGroup
+              icon={<Truck size={23} aria-hidden="true" />}
+              title="Dúvidas sobre a entrega"
+              items={deliveryQuestions}
+            />
+          </div>
+        </div>
+      </section>
 
-        <section className={styles.finalHelp}>
-          <Mail size={27} aria-hidden="true" />
+      <section className={styles.ctaSection}>
+        <div className={`${styles.container} ${styles.finalHelp}`}>
+          <div className={styles.finalIcon}>
+            <Mail size={29} aria-hidden="true" />
+          </div>
           <div>
-            <h2>Ainda possui alguma dúvida?</h2>
+            <span>AINDA POSSUI ALGUMA DÚVIDA?</span>
+            <h2>Envie uma mensagem para a Laico</h2>
             <p>
-              Envie o número do pedido e o e-mail utilizado na compra. Nunca
-              envie senha ou dados completos do cartão.
+              Tenha o número do pedido e o e-mail da compra em mãos. Nunca envie
+              senha ou dados completos do cartão.
             </p>
           </div>
-          <a href={`mailto:${supportEmail}`}>Enviar e-mail</a>
-        </section>
+          <a href={`mailto:${supportEmail}`}>
+            Enviar e-mail
+            <ArrowRight size={17} aria-hidden="true" />
+          </a>
+        </div>
       </section>
 
       <Footer />
@@ -299,21 +366,15 @@ function FaqGroup({
 }) {
   return (
     <section className={styles.faqGroup}>
-      <h3>
-        {icon}
-        {title}
-      </h3>
+      <h3>{icon}{title}</h3>
 
-      <div className={styles.questions}>
+      <div>
         {items.map((item) => (
           <details key={item.question} className={styles.question}>
             <summary>
               <span>{item.question}</span>
-              <span className={styles.plus} aria-hidden="true">
-                +
-              </span>
+              <ChevronDown size={19} aria-hidden="true" />
             </summary>
-
             <div className={styles.answer}>{item.answer}</div>
           </details>
         ))}

@@ -304,12 +304,14 @@ function InfoCard({
   icon,
   title,
   text,
-  link,
+  href,
+  linkLabel,
 }: {
   icon: ReactNode;
   title: string;
   text: string;
-  link: string;
+  href: string;
+  linkLabel: string;
 }) {
   return (
     <div className="flex min-h-[118px] items-center gap-5 overflow-hidden rounded-lg border border-[#f0e3c2] bg-[#fffdf7] px-6 py-5 shadow-[0_2px_10px_rgba(207,167,74,0.08)]">
@@ -324,7 +326,14 @@ function InfoCard({
         <p className="mt-2 text-[13px] leading-[18px] text-neutral-600">
           {text}
         </p>
-        <p className="mt-3 text-[13px] font-medium text-[#cfa74a]">{link} →</p>
+        <Link
+          href={href}
+          aria-label={`${linkLabel}: ${title}`}
+          className="mt-3 inline-flex items-center gap-1 text-[13px] font-bold text-[#c18a1a] transition hover:text-[#9f6f14] hover:underline"
+        >
+          {linkLabel}
+          <ChevronRight size={14} aria-hidden="true" />
+        </Link>
       </div>
     </div>
   );
@@ -651,19 +660,24 @@ export default async function HomePage({ searchParams }: PageProps) {
                 icon={<Truck size={34} />}
                 title="Entrega para todo o Brasil"
                 text="Enviamos para todas as regiões com segurança e agilidade."
-                link="Saiba mais"
+                href="/prazo-de-entrega"
+                linkLabel="Saiba mais"
               />
+
               <InfoCard
                 icon={<WalletCards size={34} />}
                 title="Pagamento seguro"
                 text="Aceitamos Pix, cartão de crédito, débito e boleto."
-                link="Formas de pagamento"
+                href="/formas-de-pagamento"
+                linkLabel="Formas de pagamento"
               />
+
               <InfoCard
                 icon={<ShieldCheck size={34} />}
                 title="Respeito e diversidade"
                 text="Valorizamos todas as religiões, culturas e tradições."
-                link="Nossa missão"
+                href="/sobre#nossa-missao"
+                linkLabel="Nossa missão"
               />
             </div>
           </div>
@@ -672,13 +686,13 @@ export default async function HomePage({ searchParams }: PageProps) {
 
       <Footer />
 
-      <Link
+      {/* <Link
         href="/contato"
         aria-label="Fale conosco"
         className="fixed bottom-6 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#24c45a] text-white shadow-2xl sm:bottom-8 sm:right-8 sm:h-[62px] sm:w-[62px]"
       >
         <MessageCircle size={30} />
-      </Link>
+      </Link> */}
     </main>
   );
 }
