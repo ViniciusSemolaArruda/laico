@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ChevronRight,
   Ruler,
-  Shirt,
   ShoppingCart,
   X,
   Zap,
@@ -81,7 +80,54 @@ type ProductVariant = {
     | number
     | string
     | null;
+
+  bodyChestMinimum:
+    | number
+    | string
+    | null;
+
+  bodyChestMaximum:
+    | number
+    | string
+    | null;
+
+  bodyWaistMinimum:
+    | number
+    | string
+    | null;
+
+  bodyWaistMaximum:
+    | number
+    | string
+    | null;
+
+  bodyHipMinimum:
+    | number
+    | string
+    | null;
+
+  bodyHipMaximum:
+    | number
+    | string
+    | null;
 };
+
+type GuideMode =
+  | "body"
+  | "piece";
+
+type MeasurementKey =
+  | "bodyChest"
+  | "bodyWaist"
+  | "bodyHip"
+  | "pieceLength"
+  | "sleeveLength"
+  | "shoulderWidth"
+  | "chestCircumference"
+  | "waistCircumference"
+  | "hipCircumference"
+  | "thighCircumference"
+  | "inseamLength";
 
 type ProductCart = {
   id: string;
@@ -328,6 +374,38 @@ function formatMeasurement(
   )} cm`;
 }
 
+function formatMeasurementRange(
+  minimum:
+    | number
+    | string
+    | null,
+  maximum:
+    | number
+    | string
+    | null
+) {
+  const minimumNumber =
+    Number(minimum);
+
+  const maximumNumber =
+    Number(maximum);
+
+  if (
+    !Number.isFinite(minimumNumber) ||
+    !Number.isFinite(maximumNumber) ||
+    minimumNumber <= 0 ||
+    maximumNumber <= 0
+  ) {
+    return "—";
+  }
+
+  return `${minimumNumber.toLocaleString("pt-BR", {
+    maximumFractionDigits: 2,
+  })} a ${maximumNumber.toLocaleString("pt-BR", {
+    maximumFractionDigits: 2,
+  })} cm`;
+}
+
 export default function AddToCartButton({
   product,
 }: {
@@ -357,6 +435,12 @@ export default function AddToCartButton({
 
   const [sizeGuideVariantId, setSizeGuideVariantId] =
     useState<string | null>(null);
+
+  const [guideMode, setGuideMode] =
+    useState<GuideMode>("piece");
+
+  const [activeMeasurement, setActiveMeasurement] =
+    useState<MeasurementKey>("pieceLength");
 
   const clothing =
     isClothingType(
@@ -416,6 +500,108 @@ export default function AddToCartButton({
     selectedVariant ??
     availableVariants[0] ??
     null;
+
+  const guideMeasurements =
+    useMemo(() => {
+      if (!sizeGuideVariant) {
+        return [];
+      }
+
+      if (guideMode === "body") {
+        return product.productType === "CLOTHING_TOP"
+          ? [
+              {
+                key: "bodyChest" as const,
+                label: "Tórax / busto",
+                value: formatMeasurementRange(
+                  sizeGuideVariant.bodyChestMinimum,
+                  sizeGuideVariant.bodyChestMaximum
+                ),
+              },
+              {
+                key: "bodyWaist" as const,
+                label: "Cintura",
+                value: formatMeasurementRange(
+                  sizeGuideVariant.bodyWaistMinimum,
+                  sizeGuideVariant.bodyWaistMaximum
+                ),
+              },
+            ]
+          : [
+              {
+                key: "bodyWaist" as const,
+                label: "Cintura",
+                value: formatMeasurementRange(
+                  sizeGuideVariant.bodyWaistMinimum,
+                  sizeGuideVariant.bodyWaistMaximum
+                ),
+              },
+              {
+                key: "bodyHip" as const,
+                label: "Quadril",
+                value: formatMeasurementRange(
+                  sizeGuideVariant.bodyHipMinimum,
+                  sizeGuideVariant.bodyHipMaximum
+                ),
+              },
+            ];
+      }
+
+      return product.productType === "CLOTHING_TOP"
+        ? [
+            {
+              key: "pieceLength" as const,
+              label: "Comprimento",
+              value: formatMeasurement(sizeGuideVariant.pieceLength),
+            },
+            {
+              key: "sleeveLength" as const,
+              label: "Comprimento da manga",
+              value: formatMeasurement(sizeGuideVariant.sleeveLength),
+            },
+            {
+              key: "shoulderWidth" as const,
+              label: "Ombro a ombro",
+              value: formatMeasurement(sizeGuideVariant.shoulderWidth),
+            },
+            {
+              key: "chestCircumference" as const,
+              label: "Tórax (circunferência)",
+              value: formatMeasurement(sizeGuideVariant.chestCircumference),
+            },
+          ]
+        : [
+            {
+              key: "pieceLength" as const,
+              label: "Comprimento total",
+              value: formatMeasurement(sizeGuideVariant.pieceLength),
+            },
+            {
+              key: "waistCircumference" as const,
+              label: "Cintura",
+              value: formatMeasurement(sizeGuideVariant.waistCircumference),
+            },
+            {
+              key: "hipCircumference" as const,
+              label: "Quadril",
+              value: formatMeasurement(sizeGuideVariant.hipCircumference),
+            },
+            {
+              key: "thighCircumference" as const,
+              label: "Coxa",
+              value: formatMeasurement(sizeGuideVariant.thighCircumference),
+            },
+            {
+              key: "inseamLength" as const,
+              label: "Entreperna",
+              value: formatMeasurement(sizeGuideVariant.inseamLength),
+            },
+          ];
+    }, [
+      guideMode,
+      product.productType,
+      sizeGuideVariant,
+    ]);
 
   useEffect(() => {
     if (!sizeGuideOpen) {
@@ -736,15 +922,6 @@ export default function AddToCartButton({
                   "selecione"}
               </strong>
             </p>
-
-            {selectedVariant && (
-              <span className="text-xs font-medium text-green-700">
-                {
-                  selectedVariant.stock
-                }{" "}
-                unidade(s)
-              </span>
-            )}
           </div>
 
           <div
@@ -829,6 +1006,8 @@ export default function AddToCartButton({
                     availableVariants[0]?.id ??
                     null
                 );
+                setGuideMode("piece");
+                setActiveMeasurement("pieceLength");
                 setSizeGuideOpen(true);
               }}
               className="flex w-full items-center justify-between gap-3 py-3.5 text-left text-sm font-bold text-[#20170f]"
@@ -942,14 +1121,14 @@ export default function AddToCartButton({
           role="dialog"
           aria-modal="true"
           aria-labelledby="size-guide-title"
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-3 backdrop-blur-[2px] sm:p-6"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 p-2 backdrop-blur-[2px] sm:p-5"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               setSizeGuideOpen(false);
             }
           }}
         >
-          <div className="relative max-h-[92vh] w-full max-w-[900px] overflow-y-auto rounded-2xl bg-[#fffdf9] shadow-2xl">
+          <div className="relative max-h-[95vh] w-full max-w-[980px] overflow-y-auto rounded-xl bg-[#fffdf9] shadow-2xl sm:rounded-2xl">
             <button
               type="button"
               onClick={() => setSizeGuideOpen(false)}
@@ -959,62 +1138,47 @@ export default function AddToCartButton({
               <X size={20} />
             </button>
 
-            <header className="border-b border-[#e8dcc2] px-5 py-5 pr-16 sm:px-8">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#b98218]">
-                Guia de tamanho
-              </p>
-              <h2 id="size-guide-title" className="mt-1 text-2xl font-extrabold text-[#20170f]">
-                Tabela de medidas
-              </h2>
-              <p className="mt-2 text-sm text-neutral-500">
-                Selecione um tamanho e confira as medidas da peça.
-              </p>
-            </header>
+            <div className="grid min-h-[590px] grid-cols-1 lg:grid-cols-[350px_minmax(0,1fr)]">
+              <aside className="border-b border-[#dedede] bg-white p-5 pt-7 lg:border-b-0 lg:border-r lg:p-7">
+                <h2 id="size-guide-title" className="text-center text-lg font-medium text-[#20170f]">
+                  Tabela de tamanhos
+                </h2>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
-              <aside className="border-b border-[#e8dcc2] bg-[#faf9f6] p-5 sm:p-6 lg:border-b-0 lg:border-r">
-                <div className="flex min-h-[230px] items-center justify-center rounded-2xl border border-[#e8dcc2] bg-white p-6 text-center">
-                  <div>
-                    {product.productType === "CLOTHING_TOP" ? (
-                      <Shirt size={110} strokeWidth={1} className="mx-auto text-[#b98218]" />
-                    ) : (
-                      <Ruler size={95} strokeWidth={1} className="mx-auto text-[#b98218]" />
-                    )}
-                    <strong className="mt-4 block text-sm text-[#20170f]">
-                      Como medir a peça
-                    </strong>
-                    <p className="mt-2 text-xs leading-5 text-neutral-500">
-                      Coloque a peça aberta sobre uma superfície plana e meça sem esticar o tecido.
-                    </p>
-                  </div>
+                <div className="mt-4 flex min-h-[290px] items-center justify-center rounded-lg bg-[#f2f2f2] p-3">
+                  <MeasurementIllustration
+                    productType={product.productType}
+                    mode={guideMode}
+                    measurement={activeMeasurement}
+                  />
                 </div>
 
-                {product.materialComposition && (
-                  <div className="mt-5">
-                    <span className="text-xs font-bold uppercase tracking-wide text-[#b98218]">
-                      Composição
-                    </span>
-                    <p className="mt-1 text-sm leading-6 text-neutral-600">
-                      {product.materialComposition}
-                    </p>
-                  </div>
-                )}
+                <p className="mt-4 min-h-[58px] text-sm leading-5 text-[#20170f]">
+                  {getMeasurementHelp(activeMeasurement)}
+                </p>
+
+                <p className="mt-5 border-t border-[#eeeeee] pt-4 text-base underline underline-offset-4">
+                  Fita métrica
+                </p>
               </aside>
 
-              <section className="p-5 sm:p-8">
-                <p className="text-center text-sm font-semibold text-[#20170f]">
-                  Selecione um tamanho
+              <section className="p-5 pt-14 sm:p-8 sm:pt-14 lg:px-6">
+                <p className="text-center text-sm text-[#20170f]">
+                  Selecione um tamanho e verifique as medidas
                 </p>
-                <div className="mt-4 flex flex-wrap justify-center gap-2">
+
+                <div className="mt-5 flex flex-wrap justify-center gap-3">
                   {availableVariants.map((variant) => (
                     <button
                       key={variant.id}
                       type="button"
                       onClick={() => setSizeGuideVariantId(variant.id)}
-                      className={`flex h-11 min-w-14 items-center justify-center rounded-xl border px-4 text-sm font-bold transition ${
+                      disabled={variant.stock <= 0}
+                      className={`flex h-11 min-w-[92px] items-center justify-center rounded-lg border px-4 text-base transition ${
                         sizeGuideVariant.id === variant.id
-                          ? "border-[#20170f] bg-[#20170f] text-white"
-                          : "border-[#e8dcc2] bg-white text-[#20170f] hover:border-[#b98218]"
+                          ? "border-[#20170f] bg-white text-[#20170f]"
+                          : variant.stock <= 0
+                            ? "cursor-not-allowed border-neutral-200 bg-neutral-100 text-neutral-400 line-through"
+                            : "border-[#dddddd] bg-white text-[#333333] hover:border-[#20170f]"
                       }`}
                     >
                       {variant.size}
@@ -1022,30 +1186,56 @@ export default function AddToCartButton({
                   ))}
                 </div>
 
-                <div className="mt-6 rounded-full bg-[#20170f] py-2 text-center text-xs font-bold text-white">
-                  Medidas da peça — tamanho {sizeGuideVariant.size}
+                <div className="mt-6 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGuideMode("body");
+                      setActiveMeasurement(
+                        product.productType === "CLOTHING_TOP"
+                          ? "bodyChest"
+                          : "bodyWaist"
+                      );
+                    }}
+                    className={`rounded-full px-3 py-2.5 text-xs font-bold transition ${
+                      guideMode === "body"
+                        ? "bg-[#262626] text-white"
+                        : "bg-[#e8e8e8] text-neutral-600 hover:bg-[#dddddd]"
+                    }`}
+                  >
+                    Medidas corporais
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGuideMode("piece");
+                      setActiveMeasurement("pieceLength");
+                    }}
+                    className={`rounded-full px-3 py-2.5 text-xs font-bold transition ${
+                      guideMode === "piece"
+                        ? "bg-[#262626] text-white"
+                        : "bg-[#e8e8e8] text-neutral-600 hover:bg-[#dddddd]"
+                    }`}
+                  >
+                    Medidas da peça
+                  </button>
                 </div>
 
-                <div className="mt-5 divide-y divide-[#eee2cc]">
-                  <MeasurementRow label="Comprimento da peça" value={formatMeasurement(sizeGuideVariant.pieceLength)} />
-                  {product.productType === "CLOTHING_TOP" ? (
-                    <>
-                      <MeasurementRow label="Comprimento da manga" value={formatMeasurement(sizeGuideVariant.sleeveLength)} />
-                      <MeasurementRow label="Ombro a ombro" value={formatMeasurement(sizeGuideVariant.shoulderWidth)} />
-                      <MeasurementRow label="Circunferência do tórax" value={formatMeasurement(sizeGuideVariant.chestCircumference)} />
-                    </>
-                  ) : (
-                    <>
-                      <MeasurementRow label="Circunferência da cintura" value={formatMeasurement(sizeGuideVariant.waistCircumference)} />
-                      <MeasurementRow label="Circunferência do quadril" value={formatMeasurement(sizeGuideVariant.hipCircumference)} />
-                      <MeasurementRow label="Circunferência da coxa" value={formatMeasurement(sizeGuideVariant.thighCircumference)} />
-                      <MeasurementRow label="Comprimento da entreperna" value={formatMeasurement(sizeGuideVariant.inseamLength)} />
-                    </>
-                  )}
+                <div className="mt-5 divide-y divide-[#dddddd] border-b border-[#dddddd]">
+                  {guideMeasurements.map((measurement) => (
+                    <MeasurementRow
+                      key={measurement.key}
+                      label={measurement.label}
+                      value={measurement.value}
+                      active={activeMeasurement === measurement.key}
+                      onActivate={() => setActiveMeasurement(measurement.key)}
+                    />
+                  ))}
                 </div>
 
                 <p className="mt-5 text-xs leading-5 text-neutral-500">
-                  As medidas estão em centímetros e podem apresentar pequena variação de fabricação.
+                  Passe o mouse ou toque em uma medida para visualizar exatamente onde medir.
                 </p>
                 <button
                   type="button"
@@ -1054,7 +1244,7 @@ export default function AddToCartButton({
                     selectVariant(sizeGuideVariant);
                     setSizeGuideOpen(false);
                   }}
-                  className="mt-6 h-12 w-full rounded-xl bg-[#b98218] font-bold text-white hover:bg-[#9f6f14] disabled:cursor-not-allowed disabled:bg-neutral-300"
+                  className="mt-6 h-12 w-full rounded-lg bg-[#b98218] font-bold text-white hover:bg-[#9f6f14] disabled:cursor-not-allowed disabled:bg-neutral-300"
                 >
                   {sizeGuideVariant.stock > 0
                     ? `Escolher tamanho ${sizeGuideVariant.size}`
@@ -1081,14 +1271,141 @@ export default function AddToCartButton({
 function MeasurementRow({
   label,
   value,
+  active,
+  onActivate,
 }: {
   label: string;
   value: string;
+  active: boolean;
+  onActivate: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-5 py-4 text-sm">
+    <button
+      type="button"
+      onMouseEnter={onActivate}
+      onFocus={onActivate}
+      onClick={onActivate}
+      className={`flex w-full items-center justify-between gap-5 px-5 py-4 text-left text-sm transition ${
+        active
+          ? "bg-[#f1f1f1]"
+          : "hover:bg-[#f7f7f7]"
+      }`}
+    >
       <span className="text-neutral-600">{label}</span>
       <strong className="shrink-0 text-[#20170f]">{value}</strong>
-    </div>
+    </button>
+  );
+}
+
+function getMeasurementHelp(
+  measurement: MeasurementKey
+) {
+  const messages: Record<MeasurementKey, string> = {
+    bodyChest:
+      "Contorne o tórax ou busto com a fita métrica, mantendo-a reta e sem apertar.",
+    bodyWaist:
+      "Contorne a cintura natural com a fita métrica, sem prender a respiração ou apertar.",
+    bodyHip:
+      "Contorne a parte mais larga do quadril mantendo a fita paralela ao chão.",
+    pieceLength:
+      "Meça desde a costura superior até a bainha inferior da peça.",
+    sleeveLength:
+      "Meça desde a costura onde a manga começa até a extremidade da manga.",
+    shoulderWidth:
+      "Meça de uma costura do ombro à outra, pela parte traseira da peça.",
+    chestCircumference:
+      "Meça a largura da peça logo abaixo das axilas e multiplique o resultado por dois.",
+    waistCircumference:
+      "Meça a largura da cintura da peça e multiplique o resultado por dois.",
+    hipCircumference:
+      "Meça a parte mais larga do quadril da peça e multiplique o resultado por dois.",
+    thighCircumference:
+      "Meça a largura da coxa logo abaixo do gancho e multiplique por dois.",
+    inseamLength:
+      "Meça da costura do gancho até a barra, acompanhando a parte interna da perna.",
+  };
+
+  return messages[measurement];
+}
+
+function MeasurementIllustration({
+  productType,
+  mode,
+  measurement,
+}: {
+  productType: ProductType | undefined;
+  mode: GuideMode;
+  measurement: MeasurementKey;
+}) {
+  const red = "#e64b4b";
+  const line = "#333333";
+
+  if (mode === "body") {
+    const y =
+      measurement === "bodyChest"
+        ? 103
+        : measurement === "bodyWaist"
+          ? 145
+          : 180;
+
+    return (
+      <svg
+        viewBox="0 0 280 300"
+        className="h-[270px] w-full max-w-[270px]"
+        role="img"
+        aria-label="Ilustração da medida corporal selecionada"
+      >
+        <circle cx="140" cy="35" r="22" fill="none" stroke={line} strokeWidth="2" />
+        <path d="M113 62 C92 73 83 96 80 130 L72 207 C70 221 76 233 85 236 C94 238 100 230 99 219 L103 143 L112 126 L112 267 M167 62 C188 73 197 96 200 130 L208 207 C210 221 204 233 195 236 C186 238 180 230 181 219 L177 143 L168 126 L168 267 M113 62 C124 71 156 71 167 62 L170 177 L160 267 M110 177 L120 267 M110 177 C125 186 155 186 170 177"
+          fill="none" stroke={line} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="105" y1={y} x2="175" y2={y} stroke={red} strokeWidth="4" />
+        <path d={`M105 ${y} l10 -7 v14 z M175 ${y} l-10 -7 v14 z`} fill={red} />
+      </svg>
+    );
+  }
+
+  if (productType === "CLOTHING_BOTTOM") {
+    let marker = (
+      <line x1="92" y1="70" x2="188" y2="70" stroke={red} strokeWidth="4" />
+    );
+
+    if (measurement === "pieceLength") {
+      marker = <line x1="80" y1="68" x2="72" y2="270" stroke={red} strokeWidth="4" />;
+    } else if (measurement === "hipCircumference") {
+      marker = <line x1="80" y1="112" x2="200" y2="112" stroke={red} strokeWidth="4" />;
+    } else if (measurement === "thighCircumference") {
+      marker = <line x1="88" y1="145" x2="139" y2="145" stroke={red} strokeWidth="4" />;
+    } else if (measurement === "inseamLength") {
+      marker = <line x1="140" y1="125" x2="145" y2="270" stroke={red} strokeWidth="4" />;
+    }
+
+    return (
+      <svg viewBox="0 0 280 300" className="h-[270px] w-full max-w-[270px]" role="img" aria-label="Ilustração da medida da calça selecionada">
+        <path d="M83 52 L197 52 L202 119 L181 276 L143 276 L140 145 L137 276 L99 276 L78 119 Z" fill="white" stroke={line} strokeWidth="2" />
+        <line x1="83" y1="70" x2="197" y2="70" stroke={line} strokeWidth="1.5" strokeDasharray="4 3" />
+        {marker}
+      </svg>
+    );
+  }
+
+  let marker = (
+    <line x1="140" y1="64" x2="140" y2="260" stroke={red} strokeWidth="4" />
+  );
+
+  if (measurement === "sleeveLength") {
+    marker = <line x1="190" y1="92" x2="238" y2="142" stroke={red} strokeWidth="4" />;
+  } else if (measurement === "shoulderWidth") {
+    marker = <line x1="92" y1="76" x2="188" y2="76" stroke={red} strokeWidth="4" strokeDasharray="7 5" />;
+  } else if (measurement === "chestCircumference") {
+    marker = <line x1="76" y1="132" x2="204" y2="132" stroke={red} strokeWidth="4" />;
+  }
+
+  return (
+    <svg viewBox="0 0 280 300" className="h-[270px] w-full max-w-[270px]" role="img" aria-label="Ilustração da medida da camisa selecionada">
+      <path d="M105 56 C115 68 128 72 140 72 C152 72 165 68 175 56 L229 78 L257 139 L215 158 L194 119 L194 272 L86 272 L86 119 L65 158 L23 139 L51 78 Z" fill="white" stroke={line} strokeWidth="2" strokeLinejoin="round" />
+      <path d="M116 60 C119 88 161 88 164 60" fill="none" stroke={line} strokeWidth="2" />
+      <line x1="87" y1="263" x2="193" y2="263" stroke={line} strokeWidth="1" strokeDasharray="3 2" />
+      {marker}
+    </svg>
   );
 }
