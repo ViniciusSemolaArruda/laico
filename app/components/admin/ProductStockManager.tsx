@@ -1413,10 +1413,8 @@ export default function ProductStockManager({
                             <span className="text-[10px] text-neutral-500">
                               Responsável:{" "}
                               <strong className="text-[#20170f]">
-                                {
-                                  movement.actor.name
-                                }
-                              </strong>
+  {movement.actor?.name ?? "Sistema"}
+</strong>
                             </span>
 
                             <span className="text-[10px] font-extrabold text-neutral-500">
