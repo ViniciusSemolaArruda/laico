@@ -738,3 +738,70 @@ model ShippingIntegrationCredential {
   @@index([accessTokenExpiresAt])
   @@index([refreshTokenExpiresAt])
 }
+
+/**
+ * =========================================================
+ * BANNERS PROMOCIONAIS
+ * =========================================================
+ */
+
+model Banner {
+  id String @id @default(cuid())
+
+  /**
+   * Nome interno exibido somente no painel administrativo.
+   */
+  title String
+
+  /**
+   * Descrição da imagem para acessibilidade.
+   */
+  alt String
+
+  /**
+   * Imagem horizontal utilizada em computadores e tablets.
+   * Tamanho recomendado: 1738 × 905 px.
+   */
+  desktopImageUrl String
+
+  /**
+   * Identificador utilizado para excluir a imagem do
+   * serviço de armazenamento posteriormente.
+   */
+  desktopImagePublicId String?
+
+  /**
+   * Imagem quadrada utilizada em celulares.
+   * Tamanho recomendado: 1254 × 1254 px.
+   */
+  mobileImageUrl String
+
+  /**
+   * Identificador utilizado para excluir a imagem mobile.
+   */
+  mobileImagePublicId String?
+
+  /**
+   * Página aberta quando o cliente clicar no banner.
+   * Exemplo: /catalogo ou /produtos/imagem-nossa-senhora
+   */
+  href String?
+
+  /**
+   * Permite ocultar o banner sem precisar excluí-lo.
+   */
+  active Boolean @default(true)
+
+  /**
+   * Define a ordem de apresentação no carrossel.
+   * Quanto menor o número, mais cedo ele aparece.
+   */
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([sortOrder])
+  @@index([active, sortOrder])
+}

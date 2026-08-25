@@ -206,8 +206,8 @@ export default function MercadoPagoPaymentBrick({
       setSdkReady(false);
 
       console.error(
-  "Não foi possível inicializar o pagamento.",
-  error instanceof Error
+      "Não foi possível inicializar o pagamento.",
+    error instanceof Error
     ? error.name
     : "UnknownError"
 );

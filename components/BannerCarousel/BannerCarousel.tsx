@@ -1,4 +1,7 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
+
+/* eslint-disable @next/next/no-img-element */
 
 import {
   ChevronLeft,
@@ -14,73 +17,37 @@ import {
   useState,
 } from "react";
 
+import type {
+  TouchEvent,
+} from "react";
+
 type Banner = {
-  id: number;
+  id: string;
+  title: string;
   image: string;
-  mobileImage?: string;
+  mobileImage: string;
   alt: string;
-  href?: string;
+  href: string | null;
+  sortOrder: number;
 };
 
-const banners: Banner[] = [
-  {
-    id: 1,
+type BannersResponse = {
+  success?: boolean;
+  banners?: Banner[];
+  error?: string;
+};
 
-    /*
-     * DESKTOP
-     */
-    image:
-      "/banners/banner-1.webp",
-
-    /*
-     * MOBILE
-     */
-    mobileImage:
-      "/banners/banner-1-mobile.webp",
-
-    alt: "Um presente de fé para quem sempre cuidou de você",
-
-    href: "/catalogo",
-  },
-
-  {
-    id: 2,
-
-    image:
-      "/banners/banner-2.webp",
-
-    /*
-     * MOBILE
-     */
-    mobileImage:
-      "/banners/banner-2-mobile.webp",
-
-    alt: "Fé que transforma a casa em um lar",
-
-    href: "/catalogo",
-  },
-
-  {
-    id: 3,
-
-    image:
-      "/banners/banner-3.webp",
-
-    /*
-     * MOBILE
-     */
-    mobileImage:
-      "/banners/banner-3-mobile.webp",
-
-    alt: "Sua fé, sua história, Laico",
-
-    href: "/catalogo",
-  },
-];
-
-const AUTOPLAY_TIME = 5000;
+const AUTOPLAY_TIME =
+  5000;
 
 export default function BannerCarousel() {
+  const [
+    banners,
+    setBanners,
+  ] = useState<Banner[]>(
+    []
+  );
+
   const [
     currentBanner,
     setCurrentBanner,
@@ -91,10 +58,146 @@ export default function BannerCarousel() {
     setPaused,
   ] = useState(false);
 
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    failed,
+    setFailed,
+  ] = useState(false);
+
   const touchStartX =
     useRef<number | null>(
       null
     );
+
+  /*
+   * =====================================================
+   * CARREGAR BANNERS
+   * =====================================================
+   */
+
+  useEffect(() => {
+    const controller =
+      new AbortController();
+
+    async function loadBanners() {
+      try {
+        setLoading(
+          true
+        );
+
+        setFailed(
+          false
+        );
+
+        const response =
+          await fetch(
+            "/api/banners",
+            {
+              method:
+                "GET",
+
+              cache:
+                "no-store",
+
+              signal:
+                controller.signal,
+            }
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            "Não foi possível carregar os banners."
+          );
+        }
+
+        const data =
+          (await response.json()) as BannersResponse;
+
+        if (
+          !data.success ||
+          !Array.isArray(
+            data.banners
+          )
+        ) {
+          throw new Error(
+            data.error ||
+              "Não foi possível carregar os banners."
+          );
+        }
+
+        setBanners(
+          data.banners
+        );
+
+        setCurrentBanner(
+          0
+        );
+      } catch (error) {
+        if (
+          error instanceof
+            DOMException &&
+          error.name ===
+            "AbortError"
+        ) {
+          return;
+        }
+
+        setFailed(
+          true
+        );
+
+        setBanners(
+          []
+        );
+      } finally {
+        if (
+          !controller.signal
+            .aborted
+        ) {
+          setLoading(
+            false
+          );
+        }
+      }
+    }
+
+    void loadBanners();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  /*
+   * Garante que o índice continue válido
+   * se a quantidade de banners mudar.
+   */
+
+  useEffect(() => {
+    if (
+      banners.length ===
+      0
+    ) {
+      setCurrentBanner(
+        0
+      );
+
+      return;
+    }
+
+    setCurrentBanner(
+      (current) =>
+        Math.min(
+          current,
+          banners.length -
+            1
+        )
+    );
+  }, [banners.length]);
 
   /*
    * =====================================================
@@ -104,12 +207,19 @@ export default function BannerCarousel() {
 
   const nextBanner =
     useCallback(() => {
+      if (
+        banners.length <=
+        1
+      ) {
+        return;
+      }
+
       setCurrentBanner(
         (current) =>
           (current + 1) %
           banners.length
       );
-    }, []);
+    }, [banners.length]);
 
   /*
    * =====================================================
@@ -119,6 +229,13 @@ export default function BannerCarousel() {
 
   const previousBanner =
     useCallback(() => {
+      if (
+        banners.length <=
+        1
+      ) {
+        return;
+      }
+
       setCurrentBanner(
         (current) =>
           (current -
@@ -126,7 +243,7 @@ export default function BannerCarousel() {
             banners.length) %
           banners.length
       );
-    }, []);
+    }, [banners.length]);
 
   /*
    * =====================================================
@@ -135,7 +252,11 @@ export default function BannerCarousel() {
    */
 
   useEffect(() => {
-    if (paused) {
+    if (
+      paused ||
+      banners.length <=
+        1
+    ) {
       return;
     }
 
@@ -153,7 +274,33 @@ export default function BannerCarousel() {
   }, [
     paused,
     nextBanner,
+    banners.length,
   ]);
+
+  /*
+   * Pausa o carrossel quando a aba do
+   * navegador não estiver visível.
+   */
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      setPaused(
+        document.hidden
+      );
+    }
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+    };
+  }, []);
 
   /*
    * =====================================================
@@ -162,38 +309,22 @@ export default function BannerCarousel() {
    */
 
   function handleTouchStart(
-    event: React.TouchEvent
+    event: TouchEvent<HTMLElement>
   ) {
     touchStartX.current =
       event.touches[0]
-        .clientX;
+        ?.clientX ??
+      null;
   }
 
   function handleTouchEnd(
-    event: React.TouchEvent
+    event: TouchEvent<HTMLElement>
   ) {
     if (
       touchStartX.current ===
-      null
-    ) {
-      return;
-    }
-
-    const touchEndX =
-      event.changedTouches[0]
-        .clientX;
-
-    const difference =
-      touchStartX.current -
-      touchEndX;
-
-    /*
-     * Evita trocar o banner
-     * por um toque muito pequeno.
-     */
-    if (
-      Math.abs(difference) <
-      50
+        null ||
+      banners.length <=
+        1
     ) {
       touchStartX.current =
         null;
@@ -201,7 +332,38 @@ export default function BannerCarousel() {
       return;
     }
 
-    if (difference > 0) {
+    const touchEndX =
+      event.changedTouches[0]
+        ?.clientX;
+
+    if (
+      touchEndX ===
+      undefined
+    ) {
+      touchStartX.current =
+        null;
+
+      return;
+    }
+
+    const difference =
+      touchStartX.current -
+      touchEndX;
+
+    if (
+      Math.abs(
+        difference
+      ) < 50
+    ) {
+      touchStartX.current =
+        null;
+
+      return;
+    }
+
+    if (
+      difference > 0
+    ) {
       nextBanner();
     } else {
       previousBanner();
@@ -211,14 +373,152 @@ export default function BannerCarousel() {
       null;
   }
 
+  /*
+   * =====================================================
+   * ESTADOS INICIAIS
+   * =====================================================
+   */
+
+  if (loading) {
+    return (
+      <section
+        className="bannerLoading"
+        aria-label="Carregando banners"
+        aria-busy="true"
+      >
+        <div className="loadingGlow" />
+
+        <style jsx>{`
+          .bannerLoading {
+            position: relative;
+
+            width: 100%;
+
+            /*
+             * Área panorâmica usada no desktop.
+             * A imagem original continua em alta resolução,
+             * mas é enquadrada como um banner horizontal.
+             */
+            aspect-ratio:
+              1920 / 500;
+
+            max-height:
+              500px;
+
+            overflow: hidden;
+
+            background:
+              #f3ecdf;
+          }
+
+          .loadingGlow {
+            position: absolute;
+
+            inset: 0;
+
+            background:
+              linear-gradient(
+                105deg,
+                transparent
+                  25%,
+                rgba(
+                    255,
+                    255,
+                    255,
+                    0.65
+                  )
+                  45%,
+                transparent
+                  65%
+              );
+
+            transform:
+              translateX(
+                -100%
+              );
+
+            animation:
+              loading
+              1.4s
+              infinite;
+          }
+
+          @keyframes loading {
+            100% {
+              transform:
+                translateX(
+                  100%
+                );
+            }
+          }
+
+          @media (
+            min-width:
+              1920px
+          ) {
+            .bannerLoading {
+              height:
+                500px;
+            }
+          }
+
+          @media (
+            max-width:
+              600px
+          ) {
+            .bannerLoading {
+              aspect-ratio:
+                1 / 1;
+
+              max-height:
+                none;
+            }
+          }
+
+          @media (
+            prefers-reduced-motion:
+              reduce
+          ) {
+            .loadingGlow {
+              animation: none;
+            }
+          }
+        `}</style>
+      </section>
+    );
+  }
+
+  /*
+   * Se não existir nenhum banner ativo,
+   * a seção não ocupa espaço na página.
+   */
+
+  if (
+    failed ||
+    banners.length ===
+      0
+  ) {
+    return null;
+  }
+
+  const hasNavigation =
+    banners.length > 1;
+
   return (
     <section
       className="bannerCarousel"
       aria-label="Banners promocionais"
+      aria-roledescription="carrossel"
       onMouseEnter={() =>
         setPaused(true)
       }
       onMouseLeave={() =>
+        setPaused(false)
+      }
+      onFocus={() =>
+        setPaused(true)
+      }
+      onBlur={() =>
         setPaused(false)
       }
       onTouchStart={
@@ -228,10 +528,6 @@ export default function BannerCarousel() {
         handleTouchEnd
       }
     >
-      {/* ===============================================
-          VIEWPORT
-      =============================================== */}
-
       <div className="bannerViewport">
         <div
           className="bannerTrack"
@@ -243,188 +539,186 @@ export default function BannerCarousel() {
           }}
         >
           {banners.map(
-            (banner) => (
-              <div
-                key={banner.id}
-                className="bannerSlide"
-              >
-                {banner.href ? (
-                  <Link
-                    href={
-                      banner.href
+            (
+              banner,
+              index
+            ) => {
+              const image = (
+                <picture className="bannerPicture">
+                  <source
+                    media="(max-width: 600px)"
+                    srcSet={
+                      banner.mobileImage
                     }
-                    className="bannerLink"
-                  >
-                    <picture className="bannerPicture">
-                      {/* ===================================
-                          IMAGEM MOBILE
-                      =================================== */}
+                  />
 
-                      {banner.mobileImage && (
-                        <source
-                          media="(max-width: 600px)"
-                          srcSet={
-                            banner.mobileImage
-                          }
-                        />
-                      )}
+                  <img
+                    src={
+                      banner.image
+                    }
+                    alt={
+                      banner.alt
+                    }
+                    draggable={
+                      false
+                    }
+                    loading={
+                      index === 0
+                        ? "eager"
+                        : "lazy"
+                    }
+                    fetchPriority={
+                      index === 0
+                        ? "high"
+                        : "auto"
+                    }
+                    className="bannerImage"
+                  />
+                </picture>
+              );
 
-                      {/* ===================================
-                          IMAGEM DESKTOP
-                      =================================== */}
-
-                      <img
-                        src={
-                          banner.image
-                        }
-                        alt={
-                          banner.alt
-                        }
-                        draggable={
-                          false
-                        }
-                        className={`bannerImage ${
-                          banner.mobileImage
-                            ? "hasMobileImage"
-                            : "desktopOnlyImage"
-                        }`}
-                      />
-                    </picture>
-                  </Link>
-                ) : (
-                  <picture className="bannerPicture">
-                    {banner.mobileImage && (
-                      <source
-                        media="(max-width: 600px)"
-                        srcSet={
-                          banner.mobileImage
-                        }
-                      />
-                    )}
-
-                    <img
-                      src={
-                        banner.image
+              return (
+                <div
+                  key={
+                    banner.id
+                  }
+                  className="bannerSlide"
+                  aria-hidden={
+                    currentBanner !==
+                    index
+                  }
+                >
+                  {banner.href ? (
+                    <Link
+                      href={
+                        banner.href
                       }
-                      alt={
-                        banner.alt
+                      className="bannerLink"
+                      tabIndex={
+                        currentBanner ===
+                        index
+                          ? 0
+                          : -1
                       }
-                      draggable={
-                        false
+                      aria-label={
+                        banner.title
                       }
-                      className={`bannerImage ${
-                        banner.mobileImage
-                          ? "hasMobileImage"
-                          : "desktopOnlyImage"
-                      }`}
-                    />
-                  </picture>
-                )}
-              </div>
-            )
+                    >
+                      {
+                        image
+                      }
+                    </Link>
+                  ) : (
+                    image
+                  )}
+                </div>
+              );
+            }
           )}
         </div>
       </div>
 
-      {/* ===============================================
-          SETA ESQUERDA
-      =============================================== */}
-
-      <button
-        type="button"
-        className="arrow arrowLeft"
-        onClick={
-          previousBanner
-        }
-        aria-label="Banner anterior"
-      >
-        <ChevronLeft
-          size={30}
-          strokeWidth={2}
-        />
-      </button>
-
-      {/* ===============================================
-          SETA DIREITA
-      =============================================== */}
-
-      <button
-        type="button"
-        className="arrow arrowRight"
-        onClick={nextBanner}
-        aria-label="Próximo banner"
-      >
-        <ChevronRight
-          size={30}
-          strokeWidth={2}
-        />
-      </button>
-
-      {/* ===============================================
-          INDICADORES
-      =============================================== */}
-
-      <div
-        className="indicators"
-        aria-label="Selecionar banner"
-      >
-        {banners.map(
-          (banner, index) => (
-            <button
-              type="button"
-              key={banner.id}
-              aria-label={`Ir para o banner ${
-                index + 1
-              }`}
-              aria-current={
-                currentBanner ===
-                index
-                  ? "true"
-                  : undefined
-              }
-              className={`indicator ${
-                currentBanner ===
-                index
-                  ? "indicatorActive"
-                  : ""
-              }`}
-              onClick={() =>
-                setCurrentBanner(
-                  index
-                )
+      {hasNavigation && (
+        <>
+          <button
+            type="button"
+            className="arrow arrowLeft"
+            onClick={
+              previousBanner
+            }
+            aria-label="Banner anterior"
+          >
+            <ChevronLeft
+              size={30}
+              strokeWidth={
+                2
               }
             />
-          )
-        )}
-      </div>
+          </button>
+
+          <button
+            type="button"
+            className="arrow arrowRight"
+            onClick={
+              nextBanner
+            }
+            aria-label="Próximo banner"
+          >
+            <ChevronRight
+              size={30}
+              strokeWidth={
+                2
+              }
+            />
+          </button>
+
+          <div
+            className="indicators"
+            aria-label="Selecionar banner"
+          >
+            {banners.map(
+              (
+                banner,
+                index
+              ) => (
+                <button
+                  type="button"
+                  key={
+                    banner.id
+                  }
+                  aria-label={`Ir para o banner ${
+                    index +
+                    1
+                  }`}
+                  aria-current={
+                    currentBanner ===
+                    index
+                      ? "true"
+                      : undefined
+                  }
+                  className={`indicator ${
+                    currentBanner ===
+                    index
+                      ? "indicatorActive"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    setCurrentBanner(
+                      index
+                    )
+                  }
+                />
+              )
+            )}
+          </div>
+        </>
+      )}
 
       <style jsx>{`
-        /* =====================================================
-           CARROSSEL
-        ===================================================== */
-
         .bannerCarousel {
           position: relative;
 
           width: 100%;
 
           /*
-           * DESKTOP:
-           * banners 1920 × 500
+           * Formato panorâmico exibido no desktop,
+           * igual ao layout anterior do site.
            */
           aspect-ratio:
             1920 / 500;
 
+          max-height:
+            500px;
+
           overflow: hidden;
 
-          background: #f5efe3;
+          background:
+            #f5efe3;
 
           user-select: none;
-        }
 
-        /* =====================================================
-           VIEWPORT
-        ===================================================== */
+          isolation: isolate;
+        }
 
         .bannerViewport {
           position: absolute;
@@ -436,10 +730,6 @@ export default function BannerCarousel() {
 
           overflow: hidden;
         }
-
-        /* =====================================================
-           TRACK
-        ===================================================== */
 
         .bannerTrack {
           display: flex;
@@ -461,10 +751,6 @@ export default function BannerCarousel() {
             transform;
         }
 
-        /* =====================================================
-           SLIDE
-        ===================================================== */
-
         .bannerSlide {
           position: relative;
 
@@ -477,20 +763,17 @@ export default function BannerCarousel() {
           overflow: hidden;
         }
 
-        /* =====================================================
-           LINK
-        ===================================================== */
-
         .bannerLink {
           display: block;
 
           width: 100%;
           height: 100%;
-        }
 
-        /* =====================================================
-           PICTURE
-        ===================================================== */
+          color: inherit;
+
+          text-decoration:
+            none;
+        }
 
         .bannerPicture {
           display: block;
@@ -499,30 +782,27 @@ export default function BannerCarousel() {
           height: 100%;
         }
 
-        /* =====================================================
-           IMAGEM
-        ===================================================== */
-
         .bannerImage {
           display: block;
 
           width: 100%;
           height: 100%;
 
+          /*
+           * As dimensões e a proporção já são
+           * validadas antes do cadastro.
+           */
           object-fit: cover;
 
           object-position:
-            center center;
+            center;
 
-          pointer-events: none;
+          pointer-events:
+            none;
 
           -webkit-user-drag:
             none;
         }
-
-        /* =====================================================
-           SETAS
-        ===================================================== */
 
         .arrow {
           position: absolute;
@@ -554,7 +834,9 @@ export default function BannerCarousel() {
           cursor: pointer;
 
           transform:
-            translateY(-50%);
+            translateY(
+              -50%
+            );
 
           box-shadow:
             0 3px 12px
@@ -598,15 +880,26 @@ export default function BannerCarousel() {
             );
         }
 
-        .arrow:active {
-          transform:
-            translateY(-50%)
-            scale(0.94);
+        .arrow:focus-visible,
+        .indicator:focus-visible,
+        .bannerLink:focus-visible {
+          outline:
+            3px solid
+            #b98218;
+
+          outline-offset:
+            -3px;
         }
 
-        /* =====================================================
-           SETA ESQUERDA
-        ===================================================== */
+        .arrow:active {
+          transform:
+            translateY(
+              -50%
+            )
+            scale(
+              0.94
+            );
+        }
 
         .arrowLeft {
           left: 0;
@@ -615,20 +908,12 @@ export default function BannerCarousel() {
             0 14px 14px 0;
         }
 
-        /* =====================================================
-           SETA DIREITA
-        ===================================================== */
-
         .arrowRight {
           right: 0;
 
           border-radius:
             14px 0 0 14px;
         }
-
-        /* =====================================================
-           INDICADORES
-        ===================================================== */
 
         .indicators {
           position: absolute;
@@ -644,7 +929,9 @@ export default function BannerCarousel() {
           gap: 8px;
 
           transform:
-            translateX(-50%);
+            translateX(
+              -50%
+            );
         }
 
         .indicator {
@@ -681,8 +968,6 @@ export default function BannerCarousel() {
             width
               250ms ease,
             background-color
-              250ms ease,
-            opacity
               250ms ease;
         }
 
@@ -703,24 +988,19 @@ export default function BannerCarousel() {
             #ffffff;
         }
 
-        /* =====================================================
-           MONITORES GRANDES
-        ===================================================== */
-
         @media (
-          min-width: 1920px
+          min-width:
+            1920px
         ) {
           .bannerCarousel {
-            max-height: 500px;
+            height:
+              500px;
           }
         }
 
-        /* =====================================================
-           TABLETS / NOTEBOOKS
-        ===================================================== */
-
         @media (
-          max-width: 1100px
+          max-width:
+            1100px
         ) {
           .arrow {
             width: 38px;
@@ -741,64 +1021,28 @@ export default function BannerCarousel() {
           }
         }
 
-        /* =====================================================
-           MOBILE
-        ===================================================== */
-
         @media (
-          max-width: 600px
+          max-width:
+            600px
         ) {
-          /*
-           * Agora o carrossel realmente
-           * muda de formato no celular.
-           *
-           * Desktop = 1920 × 500
-           * Mobile  = 1080 × 1080
-           */
           .bannerCarousel {
-            width: 100%;
-
+            /*
+             * A versão mobile possui
+             * exatamente 1254 × 1254 px.
+             */
             aspect-ratio:
               1 / 1;
 
-            max-height: none;
-
-            background:
-              #f5efe3;
+            max-height:
+              none;
           }
 
-          /*
-           * Os banners que possuem uma
-           * imagem mobile usam cover.
-           */
-          .hasMobileImage {
+          .bannerImage {
             object-fit: cover;
 
             object-position:
-              center center;
+              center;
           }
-
-          /*
-           * Enquanto os banners 2 e 3
-           * ainda não possuem versão
-           * mobile, mostramos a imagem
-           * inteira sem cortar.
-           *
-           * Quando criarmos as versões
-           * mobile deles, esta regra
-           * deixa de ser usada nesses
-           * banners.
-           */
-          .desktopOnlyImage {
-            object-fit: contain;
-
-            object-position:
-              center center;
-          }
-
-          /* =============================================
-             SETAS MOBILE
-          ============================================= */
 
           .arrow {
             width: 34px;
@@ -825,22 +1069,14 @@ export default function BannerCarousel() {
           }
 
           .arrowLeft {
-            left: 0;
-
             border-radius:
               0 12px 12px 0;
           }
 
           .arrowRight {
-            right: 0;
-
             border-radius:
               12px 0 0 12px;
           }
-
-          /* =============================================
-             INDICADORES MOBILE
-          ============================================= */
 
           .indicators {
             bottom: 10px;
@@ -878,12 +1114,9 @@ export default function BannerCarousel() {
           }
         }
 
-        /* =====================================================
-           CELULARES PEQUENOS
-        ===================================================== */
-
         @media (
-          max-width: 380px
+          max-width:
+            380px
         ) {
           .arrow {
             width: 30px;
@@ -906,15 +1139,16 @@ export default function BannerCarousel() {
           }
         }
 
-        /* =====================================================
-           ACESSIBILIDADE
-        ===================================================== */
-
         @media (
           prefers-reduced-motion:
             reduce
         ) {
           .bannerTrack {
+            transition: none;
+          }
+
+          .arrow,
+          .indicator {
             transition: none;
           }
         }
