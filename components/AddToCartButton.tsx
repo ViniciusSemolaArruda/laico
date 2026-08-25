@@ -406,6 +406,56 @@ function formatMeasurementRange(
   })} cm`;
 }
 
+function formatRecommendedRange({
+  minimum,
+  maximum,
+  pieceMeasurement,
+  minimumReduction,
+  maximumReduction,
+}: {
+  minimum: number | string | null;
+  maximum: number | string | null;
+  pieceMeasurement: number | string | null;
+  minimumReduction: number;
+  maximumReduction: number;
+}) {
+  const explicitMinimum = Number(minimum);
+  const explicitMaximum = Number(maximum);
+
+  if (
+    Number.isFinite(explicitMinimum) &&
+    Number.isFinite(explicitMaximum) &&
+    explicitMinimum > 0 &&
+    explicitMaximum >= explicitMinimum
+  ) {
+    return formatMeasurementRange(
+      explicitMinimum,
+      explicitMaximum
+    );
+  }
+
+  const piece = Number(pieceMeasurement);
+
+  if (!Number.isFinite(piece) || piece <= 0) {
+    return "—";
+  }
+
+  const estimatedMinimum = Math.max(
+    1,
+    piece - minimumReduction
+  );
+
+  const estimatedMaximum = Math.max(
+    estimatedMinimum,
+    piece - maximumReduction
+  );
+
+  return formatMeasurementRange(
+    estimatedMinimum,
+    estimatedMaximum
+  );
+}
+
 export default function AddToCartButton({
   product,
 }: {
@@ -513,36 +563,48 @@ export default function AddToCartButton({
               {
                 key: "bodyChest" as const,
                 label: "Tórax / busto",
-                value: formatMeasurementRange(
-                  sizeGuideVariant.bodyChestMinimum,
-                  sizeGuideVariant.bodyChestMaximum
-                ),
+                value: formatRecommendedRange({
+                  minimum: sizeGuideVariant.bodyChestMinimum,
+                  maximum: sizeGuideVariant.bodyChestMaximum,
+                  pieceMeasurement: sizeGuideVariant.chestCircumference,
+                  minimumReduction: 10,
+                  maximumReduction: 4,
+                }),
               },
               {
                 key: "bodyWaist" as const,
                 label: "Cintura",
-                value: formatMeasurementRange(
-                  sizeGuideVariant.bodyWaistMinimum,
-                  sizeGuideVariant.bodyWaistMaximum
-                ),
+                value: formatRecommendedRange({
+                  minimum: sizeGuideVariant.bodyWaistMinimum,
+                  maximum: sizeGuideVariant.bodyWaistMaximum,
+                  pieceMeasurement: sizeGuideVariant.chestCircumference,
+                  minimumReduction: 18,
+                  maximumReduction: 8,
+                }),
               },
             ]
           : [
               {
                 key: "bodyWaist" as const,
                 label: "Cintura",
-                value: formatMeasurementRange(
-                  sizeGuideVariant.bodyWaistMinimum,
-                  sizeGuideVariant.bodyWaistMaximum
-                ),
+                value: formatRecommendedRange({
+                  minimum: sizeGuideVariant.bodyWaistMinimum,
+                  maximum: sizeGuideVariant.bodyWaistMaximum,
+                  pieceMeasurement: sizeGuideVariant.waistCircumference,
+                  minimumReduction: 8,
+                  maximumReduction: 2,
+                }),
               },
               {
                 key: "bodyHip" as const,
                 label: "Quadril",
-                value: formatMeasurementRange(
-                  sizeGuideVariant.bodyHipMinimum,
-                  sizeGuideVariant.bodyHipMaximum
-                ),
+                value: formatRecommendedRange({
+                  minimum: sizeGuideVariant.bodyHipMinimum,
+                  maximum: sizeGuideVariant.bodyHipMaximum,
+                  pieceMeasurement: sizeGuideVariant.hipCircumference,
+                  minimumReduction: 10,
+                  maximumReduction: 4,
+                }),
               },
             ];
       }
@@ -1341,26 +1403,28 @@ function MeasurementIllustration({
   const line = "#333333";
 
   if (mode === "body") {
-    const y =
+    const top =
       measurement === "bodyChest"
-        ? 103
+        ? "31%"
         : measurement === "bodyWaist"
-          ? 145
-          : 180;
+          ? "44%"
+          : "53%";
 
     return (
-      <svg
-        viewBox="0 0 280 300"
-        className="h-[270px] w-full max-w-[270px]"
-        role="img"
-        aria-label="Ilustração da medida corporal selecionada"
-      >
-        <circle cx="140" cy="35" r="22" fill="none" stroke={line} strokeWidth="2" />
-        <path d="M113 62 C92 73 83 96 80 130 L72 207 C70 221 76 233 85 236 C94 238 100 230 99 219 L103 143 L112 126 L112 267 M167 62 C188 73 197 96 200 130 L208 207 C210 221 204 233 195 236 C186 238 180 230 181 219 L177 143 L168 126 L168 267 M113 62 C124 71 156 71 167 62 L170 177 L160 267 M110 177 L120 267 M110 177 C125 186 155 186 170 177"
-          fill="none" stroke={line} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <line x1="105" y1={y} x2="175" y2={y} stroke={red} strokeWidth="4" />
-        <path d={`M105 ${y} l10 -7 v14 z M175 ${y} l-10 -7 v14 z`} fill={red} />
-      </svg>
+      <div className="relative aspect-square w-full max-w-[290px]">
+        <img
+          src="/images/size-guide/boneco-unissex.png"
+          alt="Manequim unissex para demonstração de medidas corporais"
+          className="h-full w-full object-contain"
+          draggable={false}
+        />
+
+        <MeasurementLine
+          left="36%"
+          top={top}
+          width="28%"
+        />
+      </div>
     );
   }
 
@@ -1388,24 +1452,101 @@ function MeasurementIllustration({
     );
   }
 
-  let marker = (
-    <line x1="140" y1="64" x2="140" y2="260" stroke={red} strokeWidth="4" />
-  );
-
-  if (measurement === "sleeveLength") {
-    marker = <line x1="190" y1="92" x2="238" y2="142" stroke={red} strokeWidth="4" />;
-  } else if (measurement === "shoulderWidth") {
-    marker = <line x1="92" y1="76" x2="188" y2="76" stroke={red} strokeWidth="4" strokeDasharray="7 5" />;
-  } else if (measurement === "chestCircumference") {
-    marker = <line x1="76" y1="132" x2="204" y2="132" stroke={red} strokeWidth="4" />;
-  }
-
   return (
-    <svg viewBox="0 0 280 300" className="h-[270px] w-full max-w-[270px]" role="img" aria-label="Ilustração da medida da camisa selecionada">
-      <path d="M105 56 C115 68 128 72 140 72 C152 72 165 68 175 56 L229 78 L257 139 L215 158 L194 119 L194 272 L86 272 L86 119 L65 158 L23 139 L51 78 Z" fill="white" stroke={line} strokeWidth="2" strokeLinejoin="round" />
-      <path d="M116 60 C119 88 161 88 164 60" fill="none" stroke={line} strokeWidth="2" />
-      <line x1="87" y1="263" x2="193" y2="263" stroke={line} strokeWidth="1" strokeDasharray="3 2" />
-      {marker}
-    </svg>
+    <div className="relative aspect-square w-full max-w-[290px]">
+      <img
+        src="/images/size-guide/camisa-unissex.png"
+        alt="Camisa unissex para demonstração das medidas da peça"
+        className="h-full w-full object-contain"
+        draggable={false}
+      />
+
+      {measurement === "pieceLength" && (
+        <MeasurementLine
+          left="50%"
+          top="50%"
+          width="65%"
+          vertical
+        />
+      )}
+
+      {measurement === "sleeveLength" && (
+        <MeasurementLine
+          left="72%"
+          top="27%"
+          width="20%"
+          rotate={32}
+        />
+      )}
+
+      {measurement === "shoulderWidth" && (
+        <MeasurementLine
+          left="27%"
+          top="15%"
+          width="46%"
+          dashed
+        />
+      )}
+
+      {measurement === "chestCircumference" && (
+        <MeasurementLine
+          left="23%"
+          top="39%"
+          width="54%"
+        />
+      )}
+    </div>
+  );
+}
+
+function MeasurementLine({
+  left,
+  top,
+  width,
+  vertical = false,
+  rotate = 0,
+  dashed = false,
+}: {
+  left: string;
+  top: string;
+  width: string;
+  vertical?: boolean;
+  rotate?: number;
+  dashed?: boolean;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute z-10 block"
+      style={{
+        left,
+        top,
+        width: vertical ? "3px" : width,
+        height: vertical ? width : "3px",
+        backgroundColor: dashed ? "transparent" : "#ef4444",
+        backgroundImage: dashed
+          ? "repeating-linear-gradient(90deg, #ef4444 0 9px, transparent 9px 15px)"
+          : undefined,
+        transform: `translate(-50%, -50%) rotate(${rotate}deg)`,
+        transformOrigin: "center",
+        boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
+      }}
+    >
+      {!dashed && (
+        <>
+          <span className={`absolute bg-[#ef4444] ${
+            vertical
+              ? "left-1/2 top-0 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45"
+              : "left-0 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45"
+          }`} />
+
+          <span className={`absolute bg-[#ef4444] ${
+            vertical
+              ? "bottom-0 left-1/2 h-3 w-3 -translate-x-1/2 translate-y-1/2 rotate-45"
+              : "right-0 top-1/2 h-3 w-3 translate-x-1/2 -translate-y-1/2 rotate-45"
+          }`} />
+        </>
+      )}
+    </span>
   );
 }
