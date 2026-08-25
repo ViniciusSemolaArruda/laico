@@ -76,6 +76,29 @@ enum StockMovementType {
 }
 
 /**
+ * Define quais campos serão mostrados ao funcionário
+ * durante o cadastro do produto.
+ */
+enum ProductType {
+  STANDARD
+  ACCESSORY
+  RELIGIOUS_IMAGE
+  CLOTHING_TOP
+  CLOTHING_BOTTOM
+}
+
+/**
+ * Tamanhos disponíveis para vestuário.
+ */
+enum ClothingSize {
+  P
+  M
+  G
+  GG
+  XG
+}
+
+/**
  * =========================================================
  * USUÁRIOS
  * =========================================================
@@ -377,6 +400,19 @@ model Product {
 
   category String
 
+  /**
+   * Determina quais campos específicos serão exibidos
+   * no formulário e na página pública.
+   * STANDARD preserva os produtos cadastrados anteriormente.
+   */
+  productType ProductType @default(STANDARD)
+
+  /**
+   * Composição informada para produtos de vestuário.
+   * Exemplo: 96% algodão e 4% elastano.
+   */
+  materialComposition String?
+
   categoryId  String?
   categoryRef Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
@@ -404,6 +440,7 @@ model Product {
   seoDescription String?
 
   images         ProductImage[]
+  variants       ProductVariant[]
   stockMovements ProductStockMovement[]
 
   cartItems  CartItem[]
@@ -414,6 +451,7 @@ model Product {
 
   @@index([categoryId])
   @@index([category])
+  @@index([productType])
   @@index([religion])
   @@index([active])
   @@index([featured])
@@ -447,6 +485,60 @@ model ProductImage {
   @@unique([productId, position])
   @@index([productId])
   @@index([productId, isPrimary])
+}
+
+/**
+ * =========================================================
+ * TAMANHOS E MEDIDAS DE VESTUÁRIO
+ * =========================================================
+ */
+
+model ProductVariant {
+  id        String @id @default(cuid())
+  productId String
+
+  size ClothingSize
+
+  /**
+   * Código e estoque específicos para cada tamanho.
+   */
+  sku          String? @unique
+  stock        Int     @default(0)
+  minimumStock Int     @default(0)
+  active       Boolean @default(true)
+
+  /**
+   * =======================================================
+   * CAMISAS, CAMISETAS, BLUSAS E MOLETONS
+   * =======================================================
+   * Todas as medidas são armazenadas em centímetros.
+   */
+  pieceLength        Decimal? @db.Decimal(10, 2)
+  sleeveLength       Decimal? @db.Decimal(10, 2)
+  shoulderWidth      Decimal? @db.Decimal(10, 2)
+  chestCircumference Decimal? @db.Decimal(10, 2)
+
+  /**
+   * =======================================================
+   * CALÇAS, SHORTS E BERMUDAS
+   * =======================================================
+   */
+  waistCircumference Decimal? @db.Decimal(10, 2)
+  hipCircumference   Decimal? @db.Decimal(10, 2)
+  thighCircumference Decimal? @db.Decimal(10, 2)
+  inseamLength       Decimal? @db.Decimal(10, 2)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, size])
+  @@index([productId])
+  @@index([size])
+  @@index([active])
+  @@index([stock])
+  @@index([productId, active])
 }
 
 /**

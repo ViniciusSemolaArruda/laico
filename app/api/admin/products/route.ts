@@ -1,6 +1,4 @@
-import {
-  NextResponse,
-} from "next/server";
+import { NextResponse } from "next/server";
 
 import {
   deleteProductImage,
@@ -13,33 +11,59 @@ import {
 
 import { prisma } from "@/lib/prisma";
 
-export const dynamic =
-  "force-dynamic";
+export const dynamic = "force-dynamic";
 
-const MAX_BODY_SIZE =
-  100_000;
-
-const MAX_IMAGES =
-  8;
+const MAX_BODY_SIZE = 150_000;
+const MAX_IMAGES = 8;
+const MAX_VARIANTS = 5;
 
 const ACCESS_DENIED_MESSAGE =
   "Você não tem permissão para fazer isso! Acesso negado.";
 
-const ALLOWED_RELIGIONS =
-  new Set([
-    "Católicos e Protestantes",
-    "Islamismo",
-    "Judaísmo",
-    "Hinduísmo",
-    "Budismo",
-    "Espiritismo",
-    "Matriz Africana",
-    "Povos Originários",
-    "Quilombolas",
-    "Ciganos",
-    "Ortodoxos",
-    "Anglicanismo",
-  ]);
+const ALLOWED_RELIGIONS = new Set([
+  "Católicos e Protestantes",
+  "Islamismo",
+  "Judaísmo",
+  "Hinduísmo",
+  "Budismo",
+  "Espiritismo",
+  "Matriz Africana",
+  "Povos Originários",
+  "Quilombolas",
+  "Ciganos",
+  "Ortodoxos",
+  "Anglicanismo",
+]);
+
+const ALLOWED_PRODUCT_TYPES = new Set([
+  "STANDARD",
+  "ACCESSORY",
+  "RELIGIOUS_IMAGE",
+  "CLOTHING_TOP",
+  "CLOTHING_BOTTOM",
+]);
+
+const ALLOWED_CLOTHING_SIZES = new Set([
+  "P",
+  "M",
+  "G",
+  "GG",
+  "XG",
+]);
+
+type ProductType =
+  | "STANDARD"
+  | "ACCESSORY"
+  | "RELIGIOUS_IMAGE"
+  | "CLOTHING_TOP"
+  | "CLOTHING_BOTTOM";
+
+type ClothingSize =
+  | "P"
+  | "M"
+  | "G"
+  | "GG"
+  | "XG";
 
 type ProductBody = {
   name?: unknown;
@@ -53,6 +77,9 @@ type ProductBody = {
 
   category?: unknown;
   religions?: unknown;
+
+  productType?: unknown;
+  materialComposition?: unknown;
 
   stock?: unknown;
   minimumStock?: unknown;
@@ -69,6 +96,7 @@ type ProductBody = {
   seoDescription?: unknown;
 
   images?: unknown;
+  variants?: unknown;
 };
 
 type ImageInput = {
@@ -76,32 +104,42 @@ type ImageInput = {
   isPrimary: boolean;
 };
 
+type VariantInput = {
+  size: ClothingSize;
+
+  stock: number;
+  minimumStock: number;
+
+  pieceLength: number | null;
+  sleeveLength: number | null;
+  shoulderWidth: number | null;
+  chestCircumference: number | null;
+
+  waistCircumference: number | null;
+  hipCircumference: number | null;
+  thighCircumference: number | null;
+  inseamLength: number | null;
+};
+
 class ValidationError extends Error {}
 
 function jsonResponse(
-  body: Record<
-    string,
-    unknown
-  >,
+  body: Record<string, unknown>,
   status = 200
 ) {
-  return NextResponse.json(
-    body,
-    {
-      status,
+  return NextResponse.json(body, {
+    status,
 
-      headers: {
-        "Cache-Control":
-          "private, no-store, no-cache, must-revalidate",
+    headers: {
+      "Cache-Control":
+        "private, no-store, no-cache, must-revalidate",
 
-        Pragma:
-          "no-cache",
+      Pragma: "no-cache",
 
-        "X-Content-Type-Options":
-          "nosniff",
-      },
-    }
-  );
+      "X-Content-Type-Options":
+        "nosniff",
+    },
+  });
 }
 
 function isAllowedOrigin(
@@ -112,6 +150,10 @@ function isAllowedOrigin(
       "origin"
     );
 
+  /*
+   * Requisições internas do Next.js podem
+   * não possuir o header Origin.
+   */
   if (!origin) {
     return true;
   }
@@ -184,8 +226,7 @@ async function createAvailableSlug(
     );
   }
 
-  let slug =
-    base;
+  let slug = base;
 
   for (
     let suffix = 2;
@@ -224,14 +265,7 @@ async function createAvailableSlug(
 }
 
 /*
- * =========================================================
- * SKU AUTOMÁTICO
- * =========================================================
- *
- * O SKU nunca vem do navegador.
- *
- * A sequence do PostgreSQL garante que dois cadastros
- * concorrentes não recebam o mesmo número.
+ * O SKU é gerado somente no servidor.
  */
 async function generateProductSku() {
   const result =
@@ -334,18 +368,26 @@ function parseDecimal(
 
 function parseInteger(
   value: unknown,
-  label: string
+  label: string,
+  required = true
 ) {
   const text =
-    normalizeText(
-      value,
-      30
-    );
+    typeof value ===
+      "number"
+      ? String(value)
+      : normalizeText(
+          value,
+          30
+        );
 
   if (!text) {
-    throw new ValidationError(
-      `${label} é obrigatório.`
-    );
+    if (required) {
+      throw new ValidationError(
+        `${label} é obrigatório.`
+      );
+    }
+
+    return 0;
   }
 
   const number =
@@ -368,8 +410,48 @@ function parseInteger(
 function parseBoolean(
   value: unknown
 ) {
-  return value ===
-    true;
+  return value === true;
+}
+
+function parseProductType(
+  value: unknown
+): ProductType {
+  const normalized =
+    normalizeText(
+      value,
+      50
+    );
+
+  /*
+   * Mantém compatibilidade com formulários
+   * antigos que ainda não enviam productType.
+   */
+  if (!normalized) {
+    return "STANDARD";
+  }
+
+  if (
+    !ALLOWED_PRODUCT_TYPES.has(
+      normalized
+    )
+  ) {
+    throw new ValidationError(
+      "O tipo do produto é inválido."
+    );
+  }
+
+  return normalized as ProductType;
+}
+
+function isClothingProduct(
+  productType: ProductType
+) {
+  return (
+    productType ===
+      "CLOTHING_TOP" ||
+    productType ===
+      "CLOTHING_BOTTOM"
+  );
 }
 
 function parseReligions(
@@ -385,18 +467,23 @@ function parseReligions(
     );
   }
 
-  const normalized =
-    [
-      ...new Set(
-        value.filter(
+  const normalized = [
+    ...new Set(
+      value
+        .filter(
           (
             item
           ): item is string =>
             typeof item ===
             "string"
         )
-      ),
-    ];
+        .map(
+          (item) =>
+            item.trim()
+        )
+        .filter(Boolean)
+    ),
+  ];
 
   if (
     normalized.length ===
@@ -441,8 +528,7 @@ function parseImages(
     !Array.isArray(
       value
     ) ||
-    value.length ===
-      0
+    value.length === 0
   ) {
     throw new ValidationError(
       "Adicione pelo menos uma imagem."
@@ -451,7 +537,7 @@ function parseImages(
 
   if (
     value.length >
-    MAX_IMAGES
+      MAX_IMAGES
   ) {
     throw new ValidationError(
       `Adicione no máximo ${MAX_IMAGES} imagens.`
@@ -511,7 +597,7 @@ function parseImages(
 
   if (
     uniqueIds.size !==
-    images.length
+      images.length
   ) {
     throw new ValidationError(
       "Existem imagens duplicadas."
@@ -533,6 +619,262 @@ function parseImages(
   }
 
   return images;
+}
+
+function parseVariantMeasurement(
+  data: Record<
+    string,
+    unknown
+  >,
+  field: string,
+  label: string
+) {
+  return parseDecimal(
+    data[field],
+    {
+      required: true,
+      minimum: 0.01,
+      maximum: 10_000,
+      label,
+    }
+  );
+}
+
+function parseVariants(
+  value: unknown,
+  productType: ProductType
+): VariantInput[] {
+  if (
+    !isClothingProduct(
+      productType
+    )
+  ) {
+    /*
+     * Produtos sem vestuário não podem criar
+     * variações por tamanho acidentalmente.
+     */
+    return [];
+  }
+
+  if (
+    !Array.isArray(
+      value
+    ) ||
+    value.length === 0
+  ) {
+    throw new ValidationError(
+      "Adicione pelo menos um tamanho para o vestuário."
+    );
+  }
+
+  if (
+    value.length >
+      MAX_VARIANTS
+  ) {
+    throw new ValidationError(
+      `Adicione no máximo ${MAX_VARIANTS} tamanhos.`
+    );
+  }
+
+  const variants =
+    value.map(
+      (
+        item,
+        index
+      ): VariantInput => {
+        if (
+          typeof item !==
+            "object" ||
+          item === null
+        ) {
+          throw new ValidationError(
+            `O tamanho ${index + 1} é inválido.`
+          );
+        }
+
+        const data =
+          item as Record<
+            string,
+            unknown
+          >;
+
+        const size =
+          normalizeText(
+            data.size,
+            10
+          ).toUpperCase();
+
+        if (
+          !ALLOWED_CLOTHING_SIZES.has(
+            size
+          )
+        ) {
+          throw new ValidationError(
+            `O tamanho ${index + 1} é inválido.`
+          );
+        }
+
+        const stock =
+          parseInteger(
+            data.stock,
+            `Estoque do tamanho ${size}`
+          );
+
+        const minimumStock =
+          parseInteger(
+            data.minimumStock,
+            `Estoque mínimo do tamanho ${size}`,
+            false
+          );
+
+        if (
+          productType ===
+          "CLOTHING_TOP"
+        ) {
+          const pieceLength =
+            parseVariantMeasurement(
+              data,
+              "pieceLength",
+              `Comprimento da peça do tamanho ${size}`
+            );
+
+          const sleeveLength =
+            parseVariantMeasurement(
+              data,
+              "sleeveLength",
+              `Comprimento da manga do tamanho ${size}`
+            );
+
+          const shoulderWidth =
+            parseVariantMeasurement(
+              data,
+              "shoulderWidth",
+              `Medida de ombro a ombro do tamanho ${size}`
+            );
+
+          const chestCircumference =
+            parseVariantMeasurement(
+              data,
+              "chestCircumference",
+              `Circunferência do tórax do tamanho ${size}`
+            );
+
+          return {
+            size:
+              size as ClothingSize,
+
+            stock,
+            minimumStock,
+
+            pieceLength,
+            sleeveLength,
+            shoulderWidth,
+            chestCircumference,
+
+            waistCircumference:
+              null,
+
+            hipCircumference:
+              null,
+
+            thighCircumference:
+              null,
+
+            inseamLength:
+              null,
+          };
+        }
+
+        const pieceLength =
+          parseVariantMeasurement(
+            data,
+            "pieceLength",
+            `Comprimento total do tamanho ${size}`
+          );
+
+        const waistCircumference =
+          parseVariantMeasurement(
+            data,
+            "waistCircumference",
+            `Circunferência da cintura do tamanho ${size}`
+          );
+
+        const hipCircumference =
+          parseVariantMeasurement(
+            data,
+            "hipCircumference",
+            `Circunferência do quadril do tamanho ${size}`
+          );
+
+        const thighCircumference =
+          parseVariantMeasurement(
+            data,
+            "thighCircumference",
+            `Circunferência da coxa do tamanho ${size}`
+          );
+
+        const inseamLength =
+          parseVariantMeasurement(
+            data,
+            "inseamLength",
+            `Comprimento interno da perna do tamanho ${size}`
+          );
+
+        return {
+          size:
+            size as ClothingSize,
+
+          stock,
+          minimumStock,
+
+          pieceLength,
+
+          sleeveLength:
+            null,
+
+          shoulderWidth:
+            null,
+
+          chestCircumference:
+            null,
+
+          waistCircumference,
+          hipCircumference,
+          thighCircumference,
+          inseamLength,
+        };
+      }
+    );
+
+  const sizes =
+    variants.map(
+      (variant) =>
+        variant.size
+    );
+
+  if (
+    new Set(
+      sizes
+    ).size !==
+      sizes.length
+  ) {
+    throw new ValidationError(
+      "Existem tamanhos repetidos."
+    );
+  }
+
+  return variants;
+}
+
+function decimalToDatabase(
+  value: number | null,
+  decimalPlaces = 2
+) {
+  return value === null
+    ? null
+    : value.toFixed(
+        decimalPlaces
+      );
 }
 
 function isUniqueError(
@@ -592,7 +934,7 @@ export async function POST(
   try {
     /*
      * =====================================================
-     * ORIGEM
+     * ORIGEM E AUTORIZAÇÃO
      * =====================================================
      */
 
@@ -610,12 +952,6 @@ export async function POST(
       );
     }
 
-    /*
-     * =====================================================
-     * AUTORIZAÇÃO
-     * =====================================================
-     */
-
     const session =
       await requireAdminPermission(
         "PRODUCTS",
@@ -624,7 +960,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * CONTENT TYPE
+     * CONTENT TYPE E TAMANHO
      * =====================================================
      */
 
@@ -672,12 +1008,6 @@ export async function POST(
       );
     }
 
-    /*
-     * =====================================================
-     * BODY
-     * =====================================================
-     */
-
     const rawBody =
       await request.text();
 
@@ -695,8 +1025,7 @@ export async function POST(
       );
     }
 
-    let body:
-      ProductBody;
+    let body: ProductBody;
 
     try {
       body =
@@ -740,8 +1069,7 @@ export async function POST(
       );
 
     if (
-      description.length <
-      2
+      description.length < 2
     ) {
       throw new ValidationError(
         "Informe a descrição do produto."
@@ -761,8 +1089,7 @@ export async function POST(
       );
 
     if (
-      category.length <
-      2
+      category.length < 2
     ) {
       throw new ValidationError(
         "Informe a categoria."
@@ -774,6 +1101,31 @@ export async function POST(
         body.religions
       );
 
+    const productType =
+      parseProductType(
+        body.productType
+      );
+
+    const clothing =
+      isClothingProduct(
+        productType
+      );
+
+    const materialComposition =
+      normalizeText(
+        body.materialComposition,
+        500
+      );
+
+    if (
+      !clothing &&
+      materialComposition
+    ) {
+      throw new ValidationError(
+        "A composição do material é permitida apenas para vestuário."
+      );
+    }
+
     /*
      * =====================================================
      * PREÇOS
@@ -784,20 +1136,14 @@ export async function POST(
       parseDecimal(
         body.price,
         {
-          required:
-            true,
-          minimum:
-            0.01,
+          required: true,
+          minimum: 0.01,
           maximum:
             99_999_999,
-          label:
-            "Preço",
+          label: "Preço",
         }
       );
 
-    /*
-     * required:true garante number.
-     */
     if (
       price === null
     ) {
@@ -810,8 +1156,7 @@ export async function POST(
       parseDecimal(
         body.salePrice,
         {
-          minimum:
-            0.01,
+          minimum: 0.01,
           maximum:
             99_999_999,
           label:
@@ -820,10 +1165,8 @@ export async function POST(
       );
 
     if (
-      salePrice !==
-        null &&
-      salePrice >=
-        price
+      salePrice !== null &&
+      salePrice >= price
     ) {
       throw new ValidationError(
         "O preço promocional deve ser menor que o preço normal."
@@ -837,52 +1180,85 @@ export async function POST(
           minimum: 0,
           maximum:
             99_999_999,
-          label:
-            "Custo",
+          label: "Custo",
         }
       );
 
     /*
      * =====================================================
-     * ESTOQUE
+     * VARIAÇÕES E ESTOQUE
      * =====================================================
      */
 
-    const stock =
-      parseInteger(
-        body.stock,
-        "Estoque"
+    const variants =
+      parseVariants(
+        body.variants,
+        productType
       );
 
-    const minimumStockText =
-      normalizeText(
-        body.minimumStock,
-        30
-      );
+    const stock =
+      clothing
+        ? variants.reduce(
+            (
+              total,
+              variant
+            ) =>
+              total +
+              variant.stock,
+            0
+          )
+        : parseInteger(
+            body.stock,
+            "Estoque"
+          );
 
     const minimumStock =
-      minimumStockText
-        ? parseInteger(
-            minimumStockText,
-            "Estoque mínimo"
+      clothing
+        ? variants.reduce(
+            (
+              total,
+              variant
+            ) =>
+              total +
+              variant.minimumStock,
+            0
           )
-        : 0;
+        : parseInteger(
+            body.minimumStock,
+            "Estoque mínimo",
+            false
+          );
 
     /*
      * =====================================================
-     * FRETE
+     * PESO E DIMENSÕES
      * =====================================================
+     *
+     * Para imagens e esculturas religiosas,
+     * essas informações são obrigatórias.
+     *
+     * Nos outros tipos permanecem opcionais,
+     * pois também podem representar a embalagem
+     * utilizada no cálculo do frete.
      */
+
+    const religiousImage =
+      productType ===
+      "RELIGIOUS_IMAGE";
 
     const weight =
       parseDecimal(
         body.weight,
         {
-          minimum: 0,
+          required:
+            religiousImage,
+          minimum:
+            religiousImage
+              ? 0.001
+              : 0,
           maximum:
             100_000,
-          label:
-            "Peso",
+          label: "Peso",
         }
       );
 
@@ -890,11 +1266,15 @@ export async function POST(
       parseDecimal(
         body.height,
         {
-          minimum: 0,
+          required:
+            religiousImage,
+          minimum:
+            religiousImage
+              ? 0.01
+              : 0,
           maximum:
             100_000,
-          label:
-            "Altura",
+          label: "Altura",
         }
       );
 
@@ -902,11 +1282,15 @@ export async function POST(
       parseDecimal(
         body.width,
         {
-          minimum: 0,
+          required:
+            religiousImage,
+          minimum:
+            religiousImage
+              ? 0.01
+              : 0,
           maximum:
             100_000,
-          label:
-            "Largura",
+          label: "Largura",
         }
       );
 
@@ -914,17 +1298,21 @@ export async function POST(
       parseDecimal(
         body.length,
         {
-          minimum: 0,
+          required:
+            religiousImage,
+          minimum:
+            religiousImage
+              ? 0.01
+              : 0,
           maximum:
             100_000,
-          label:
-            "Comprimento",
+          label: "Comprimento",
         }
       );
 
     /*
      * =====================================================
-     * SEO
+     * SEO E EXIBIÇÃO
      * =====================================================
      */
 
@@ -954,22 +1342,12 @@ export async function POST(
      * =====================================================
      * IMAGENS
      * =====================================================
-     *
-     * Ignoramos totalmente a URL enviada pelo navegador.
-     *
-     * Cada publicId é conferido novamente diretamente
-     * no Cloudinary.
      */
 
     const imageInputs =
       parseImages(
         body.images
       );
-
-    /*
-     * Impede reutilizar uma imagem que já pertence
-     * a outro produto.
-     */
 
     const existingImage =
       await prisma.productImage.findFirst({
@@ -1040,10 +1418,8 @@ export async function POST(
 
     /*
      * =====================================================
-     * SLUG
+     * SLUG E SKU
      * =====================================================
-     *
-     * O navegador não decide o slug final.
      */
 
     const slug =
@@ -1051,16 +1427,12 @@ export async function POST(
         name
       );
 
-    /*
-     * O código interno também é definido exclusivamente
-     * pelo servidor, utilizando a sequence do PostgreSQL.
-     */
     const sku =
       await generateProductSku();
 
     /*
      * =====================================================
-     * PRODUTO
+     * CADASTRO
      * =====================================================
      */
 
@@ -1076,9 +1448,7 @@ export async function POST(
               await transaction.product.create({
                 data: {
                   name,
-
                   slug,
-
                   sku,
 
                   shortDescription:
@@ -1109,8 +1479,7 @@ export async function POST(
                         ),
 
                   /*
-                   * Compatibilidade temporária
-                   * com a loja atual.
+                   * Compatibilidade com a loja atual.
                    */
                   image:
                     primaryImage.url,
@@ -1118,51 +1487,48 @@ export async function POST(
                   religion:
                     religions[0],
 
-                  /*
-                   * Novo campo múltiplo.
-                   */
                   religions,
 
                   category,
 
+                  productType,
+
+                  materialComposition:
+                    clothing &&
+                    materialComposition
+                      ? materialComposition
+                      : null,
+
+                  /*
+                   * Para vestuário, stock é a soma
+                   * dos estoques dos tamanhos.
+                   */
                   stock,
 
                   minimumStock,
 
                   weight:
-                    weight ===
-                    null
-                      ? null
-                      : weight.toFixed(
-                          3
-                        ),
+                    decimalToDatabase(
+                      weight,
+                      3
+                    ),
 
                   height:
-                    height ===
-                    null
-                      ? null
-                      : height.toFixed(
-                          2
-                        ),
+                    decimalToDatabase(
+                      height
+                    ),
 
                   width:
-                    width ===
-                    null
-                      ? null
-                      : width.toFixed(
-                          2
-                        ),
+                    decimalToDatabase(
+                      width
+                    ),
 
                   length:
-                    length ===
-                    null
-                      ? null
-                      : length.toFixed(
-                          2
-                        ),
+                    decimalToDatabase(
+                      length
+                    ),
 
                   featured,
-
                   active,
 
                   seoTitle:
@@ -1196,6 +1562,73 @@ export async function POST(
                         })
                       ),
                   },
+
+                  variants:
+                    clothing
+                      ? {
+                          create:
+                            variants.map(
+                              (
+                                variant
+                              ) => ({
+                                size:
+                                  variant.size,
+
+                                sku:
+                                  `${sku}-${variant.size}`,
+
+                                stock:
+                                  variant.stock,
+
+                                minimumStock:
+                                  variant.minimumStock,
+
+                                active:
+                                  true,
+
+                                pieceLength:
+                                  decimalToDatabase(
+                                    variant.pieceLength
+                                  ),
+
+                                sleeveLength:
+                                  decimalToDatabase(
+                                    variant.sleeveLength
+                                  ),
+
+                                shoulderWidth:
+                                  decimalToDatabase(
+                                    variant.shoulderWidth
+                                  ),
+
+                                chestCircumference:
+                                  decimalToDatabase(
+                                    variant.chestCircumference
+                                  ),
+
+                                waistCircumference:
+                                  decimalToDatabase(
+                                    variant.waistCircumference
+                                  ),
+
+                                hipCircumference:
+                                  decimalToDatabase(
+                                    variant.hipCircumference
+                                  ),
+
+                                thighCircumference:
+                                  decimalToDatabase(
+                                    variant.thighCircumference
+                                  ),
+
+                                inseamLength:
+                                  decimalToDatabase(
+                                    variant.inseamLength
+                                  ),
+                              })
+                            ),
+                        }
+                      : undefined,
                 },
 
                 select: {
@@ -1203,21 +1636,35 @@ export async function POST(
                   name: true,
                   slug: true,
                   sku: true,
+                  productType:
+                    true,
                   active: true,
+                  stock: true,
                   createdAt:
                     true,
+
+                  variants: {
+                    orderBy: {
+                      createdAt:
+                        "asc",
+                    },
+
+                    select: {
+                      id: true,
+                      size: true,
+                      sku: true,
+                      stock: true,
+                      minimumStock:
+                        true,
+                    },
+                  },
                 },
               });
 
             /*
-             * Estoque inicial.
-             *
-             * O produto nasce com o saldo informado no cadastro,
-             * e a primeira entrada é registrada dentro da mesma
-             * transação. Se o saldo inicial for zero, não criamos
-             * uma movimentação sem quantidade.
+             * A movimentação inicial utiliza o
+             * estoque total do produto.
              */
-
             if (
               stock > 0
             ) {
@@ -1242,17 +1689,17 @@ export async function POST(
                     stock,
 
                   reason:
-                    "Estoque inicial do produto",
+                    clothing
+                      ? "Estoque inicial das variações"
+                      : "Estoque inicial do produto",
 
                   note:
-                    "Saldo informado durante o cadastro do produto.",
+                    clothing
+                      ? "Saldo total calculado a partir dos tamanhos cadastrados."
+                      : "Saldo informado durante o cadastro do produto.",
                 },
               });
             }
-
-            /*
-             * Auditoria dentro da mesma transação.
-             */
 
             await transaction.adminAuditLog.create({
               data: {
@@ -1281,7 +1728,25 @@ export async function POST(
                   sku:
                     createdProduct.sku,
 
+                  productType,
+
                   stock,
+
+                  variants:
+                    variants.map(
+                      (
+                        variant
+                      ) => ({
+                        size:
+                          variant.size,
+
+                        stock:
+                          variant.stock,
+
+                        minimumStock:
+                          variant.minimumStock,
+                      })
+                    ),
 
                   initialStockMovementCreated:
                     stock > 0,
@@ -1292,7 +1757,6 @@ export async function POST(
                     ),
 
                   active,
-
                   featured,
                 },
               },
@@ -1303,12 +1767,9 @@ export async function POST(
         );
     } catch (error) {
       /*
-       * O upload já aconteceu no Cloudinary.
-       *
-       * Se o banco falhar, tentamos remover os
-       * arquivos recém-enviados para evitar órfãos.
+       * Se o banco falhar depois do upload,
+       * remove as imagens recém-enviadas.
        */
-
       await Promise.allSettled(
         verifiedImages.map(
           (image) =>
@@ -1323,20 +1784,12 @@ export async function POST(
 
     return jsonResponse(
       {
-        success:
-          true,
-
+        success: true,
         product,
       },
       201
     );
   } catch (error) {
-    /*
-     * =====================================================
-     * AUTORIZAÇÃO
-     * =====================================================
-     */
-
     const authorizationResponse =
       getAuthorizationResponse(
         error
@@ -1347,12 +1800,6 @@ export async function POST(
     ) {
       return authorizationResponse;
     }
-
-    /*
-     * =====================================================
-     * VALIDAÇÃO
-     * =====================================================
-     */
 
     if (
       error instanceof
@@ -1367,10 +1814,6 @@ export async function POST(
       );
     }
 
-    /*
-     * SKU/slug/publicId duplicado.
-     */
-
     if (
       isUniqueError(
         error
@@ -1384,13 +1827,6 @@ export async function POST(
         409
       );
     }
-
-    /*
-     * Cloudinary.
-     *
-     * Não enviamos detalhes internos da conta
-     * Cloudinary para o navegador.
-     */
 
     if (
       error instanceof Error &&
@@ -1413,15 +1849,9 @@ export async function POST(
     }
 
     /*
-     * Nunca imprimimos:
-     *
-     * - API Secret;
-     * - corpo da requisição;
-     * - custo;
-     * - credenciais;
-     * - resposta completa do Cloudinary.
+     * Não exibe dados sensíveis, corpo da
+     * requisição ou credenciais no log.
      */
-
     console.error(
       "Erro ao cadastrar produto:",
       error instanceof Error
