@@ -3,8 +3,11 @@
 import {
   Check,
   ChevronDown,
+  ChevronRight,
   Ruler,
+  Shirt,
   ShoppingCart,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -13,6 +16,7 @@ import {
 } from "next/navigation";
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -348,6 +352,12 @@ export default function AddToCartButton({
       null
     );
 
+  const [sizeGuideOpen, setSizeGuideOpen] =
+    useState(false);
+
+  const [sizeGuideVariantId, setSizeGuideVariantId] =
+    useState<string | null>(null);
+
   const clothing =
     isClothingType(
       product.productType
@@ -397,6 +407,50 @@ export default function AddToCartButton({
         variant.id ===
         selectedVariantId
     ) ?? null;
+
+  const sizeGuideVariant =
+    availableVariants.find(
+      (variant) =>
+        variant.id === sizeGuideVariantId
+    ) ??
+    selectedVariant ??
+    availableVariants[0] ??
+    null;
+
+  useEffect(() => {
+    if (!sizeGuideOpen) {
+      return;
+    }
+
+    const previousOverflow =
+      document.body.style.overflow;
+
+    document.body.style.overflow =
+      "hidden";
+
+    function handleKeyDown(
+      event: KeyboardEvent
+    ) {
+      if (event.key === "Escape") {
+        setSizeGuideOpen(false);
+      }
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleKeyDown
+    );
+
+    return () => {
+      document.body.style.overflow =
+        previousOverflow;
+
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+    };
+  }, [sizeGuideOpen]);
 
   const currentStock =
     clothing
@@ -762,217 +816,47 @@ export default function AddToCartButton({
         </div>
       )}
 
-      {/* COMPOSIÇÃO */}
+      {/* INFORMAÇÕES RECOLHIDAS */}
 
-      {clothing &&
-        product.materialComposition && (
-          <div className="mb-5 rounded-xl bg-[#faf9f6] p-3">
-            <span className="block text-xs font-bold uppercase tracking-wide text-[#9f6f14]">
-              Composição
-            </span>
-
-            <p className="mt-1 text-sm text-neutral-700">
-              {
-                product.materialComposition
-              }
-            </p>
-          </div>
-        )}
-
-      {/* TABELA DE MEDIDAS */}
-
-      {clothing &&
-        availableVariants.length >
-          0 && (
-          <details className="group mb-5 overflow-hidden rounded-xl border border-[#e8dcc2] bg-white">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-[#20170f]">
+      {clothing && (
+        <div className="mb-5 border-y border-[#e8dcc2]">
+          {availableVariants.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setSizeGuideVariantId(
+                  selectedVariant?.id ??
+                    availableVariants[0]?.id ??
+                    null
+                );
+                setSizeGuideOpen(true);
+              }}
+              className="flex w-full items-center justify-between gap-3 py-3.5 text-left text-sm font-bold text-[#20170f]"
+            >
               <span className="flex items-center gap-2">
-                <Ruler
-                  size={17}
-                  className="text-[#b98218]"
-                />
-
+                <Ruler size={18} className="text-[#b98218]" />
                 Tabela de medidas
               </span>
+              <ChevronRight size={18} className="text-[#b98218]" />
+            </button>
+          )}
 
-              <ChevronDown
-                size={17}
-                className="text-[#b98218] transition group-open:rotate-180"
-              />
-            </summary>
-
-            <div className="overflow-x-auto border-t border-[#e8dcc2]">
-              {product.productType ===
-              "CLOTHING_TOP" ? (
-                <table className="w-full min-w-[570px] border-collapse text-left text-xs">
-                  <thead className="bg-[#faf9f6] text-[#20170f]">
-                    <tr>
-                      <TableHeader>
-                        Tamanho
-                      </TableHeader>
-
-                      <TableHeader>
-                        Comprimento
-                      </TableHeader>
-
-                      <TableHeader>
-                        Manga
-                      </TableHeader>
-
-                      <TableHeader>
-                        Ombro
-                      </TableHeader>
-
-                      <TableHeader>
-                        Tórax
-                      </TableHeader>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {availableVariants.map(
-                      (
-                        variant
-                      ) => (
-                        <tr
-                          key={
-                            variant.id
-                          }
-                          className={`border-t border-[#eee2cc] ${
-                            selectedVariantId ===
-                            variant.id
-                              ? "bg-[#fff8e8]"
-                              : "bg-white"
-                          }`}
-                        >
-                          <TableCell bold>
-                            {
-                              variant.size
-                            }
-                          </TableCell>
-
-                          <TableCell>
-                            {formatMeasurement(
-                              variant.pieceLength
-                            )}
-                          </TableCell>
-
-                          <TableCell>
-                            {formatMeasurement(
-                              variant.sleeveLength
-                            )}
-                          </TableCell>
-
-                          <TableCell>
-                            {formatMeasurement(
-                              variant.shoulderWidth
-                            )}
-                          </TableCell>
-
-                          <TableCell>
-                            {formatMeasurement(
-                              variant.chestCircumference
-                            )}
-                          </TableCell>
-                        </tr>
-                      )
-                    )}
-                  </tbody>
-                </table>
-              ) : (
-                <table className="w-full min-w-[680px] border-collapse text-left text-xs">
-                  <thead className="bg-[#faf9f6] text-[#20170f]">
-                    <tr>
-                      <TableHeader>
-                        Tamanho
-                      </TableHeader>
-
-                      <TableHeader>
-                        Comprimento
-                      </TableHeader>
-
-                      <TableHeader>
-                        Cintura
-                      </TableHeader>
-
-                      <TableHeader>
-                        Quadril
-                      </TableHeader>
-
-                      <TableHeader>
-                        Coxa
-                      </TableHeader>
-
-                      <TableHeader>
-                        Entreperna
-                      </TableHeader>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {availableVariants.map(
-                      (
-                        variant
-                      ) => (
-                        <tr
-                          key={
-                            variant.id
-                          }
-                          className={`border-t border-[#eee2cc] ${
-                            selectedVariantId ===
-                            variant.id
-                              ? "bg-[#fff8e8]"
-                              : "bg-white"
-                          }`}
-                        >
-                          <TableCell bold>
-                            {
-                              variant.size
-                            }
-                          </TableCell>
-
-                          <TableCell>
-                            {formatMeasurement(
-                              variant.pieceLength
-                            )}
-                          </TableCell>
-
-                          <TableCell>
-                            {formatMeasurement(
-                              variant.waistCircumference
-                            )}
-                          </TableCell>
-
-                          <TableCell>
-                            {formatMeasurement(
-                              variant.hipCircumference
-                            )}
-                          </TableCell>
-
-                          <TableCell>
-                            {formatMeasurement(
-                              variant.thighCircumference
-                            )}
-                          </TableCell>
-
-                          <TableCell>
-                            {formatMeasurement(
-                              variant.inseamLength
-                            )}
-                          </TableCell>
-                        </tr>
-                      )
-                    )}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            <p className="border-t border-[#e8dcc2] bg-[#faf9f6] px-4 py-3 text-[11px] leading-5 text-neutral-500">
-              Todas as medidas estão em centímetros. Pode haver pequena variação dependendo do processo de fabricação.
-            </p>
-          </details>
-        )}
+          {product.materialComposition && (
+            <details className="group border-t border-[#e8dcc2]">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3.5 text-sm font-bold text-[#20170f]">
+                Composição do produto
+                <ChevronDown
+                  size={18}
+                  className="text-[#b98218] transition group-open:rotate-180"
+                />
+              </summary>
+              <p className="pb-4 text-sm leading-6 text-neutral-600">
+                {product.materialComposition}
+              </p>
+            </details>
+          )}
+        </div>
+      )}
 
       <button
         type="button"
@@ -1053,6 +937,135 @@ export default function AddToCartButton({
         </p>
       )}
 
+      {sizeGuideOpen && sizeGuideVariant && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="size-guide-title"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-3 backdrop-blur-[2px] sm:p-6"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setSizeGuideOpen(false);
+            }
+          }}
+        >
+          <div className="relative max-h-[92vh] w-full max-w-[900px] overflow-y-auto rounded-2xl bg-[#fffdf9] shadow-2xl">
+            <button
+              type="button"
+              onClick={() => setSizeGuideOpen(false)}
+              aria-label="Fechar tabela de medidas"
+              className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-[#e8dcc2] bg-white shadow-sm hover:bg-[#faf9f6]"
+            >
+              <X size={20} />
+            </button>
+
+            <header className="border-b border-[#e8dcc2] px-5 py-5 pr-16 sm:px-8">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#b98218]">
+                Guia de tamanho
+              </p>
+              <h2 id="size-guide-title" className="mt-1 text-2xl font-extrabold text-[#20170f]">
+                Tabela de medidas
+              </h2>
+              <p className="mt-2 text-sm text-neutral-500">
+                Selecione um tamanho e confira as medidas da peça.
+              </p>
+            </header>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <aside className="border-b border-[#e8dcc2] bg-[#faf9f6] p-5 sm:p-6 lg:border-b-0 lg:border-r">
+                <div className="flex min-h-[230px] items-center justify-center rounded-2xl border border-[#e8dcc2] bg-white p-6 text-center">
+                  <div>
+                    {product.productType === "CLOTHING_TOP" ? (
+                      <Shirt size={110} strokeWidth={1} className="mx-auto text-[#b98218]" />
+                    ) : (
+                      <Ruler size={95} strokeWidth={1} className="mx-auto text-[#b98218]" />
+                    )}
+                    <strong className="mt-4 block text-sm text-[#20170f]">
+                      Como medir a peça
+                    </strong>
+                    <p className="mt-2 text-xs leading-5 text-neutral-500">
+                      Coloque a peça aberta sobre uma superfície plana e meça sem esticar o tecido.
+                    </p>
+                  </div>
+                </div>
+
+                {product.materialComposition && (
+                  <div className="mt-5">
+                    <span className="text-xs font-bold uppercase tracking-wide text-[#b98218]">
+                      Composição
+                    </span>
+                    <p className="mt-1 text-sm leading-6 text-neutral-600">
+                      {product.materialComposition}
+                    </p>
+                  </div>
+                )}
+              </aside>
+
+              <section className="p-5 sm:p-8">
+                <p className="text-center text-sm font-semibold text-[#20170f]">
+                  Selecione um tamanho
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {availableVariants.map((variant) => (
+                    <button
+                      key={variant.id}
+                      type="button"
+                      onClick={() => setSizeGuideVariantId(variant.id)}
+                      className={`flex h-11 min-w-14 items-center justify-center rounded-xl border px-4 text-sm font-bold transition ${
+                        sizeGuideVariant.id === variant.id
+                          ? "border-[#20170f] bg-[#20170f] text-white"
+                          : "border-[#e8dcc2] bg-white text-[#20170f] hover:border-[#b98218]"
+                      }`}
+                    >
+                      {variant.size}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-6 rounded-full bg-[#20170f] py-2 text-center text-xs font-bold text-white">
+                  Medidas da peça — tamanho {sizeGuideVariant.size}
+                </div>
+
+                <div className="mt-5 divide-y divide-[#eee2cc]">
+                  <MeasurementRow label="Comprimento da peça" value={formatMeasurement(sizeGuideVariant.pieceLength)} />
+                  {product.productType === "CLOTHING_TOP" ? (
+                    <>
+                      <MeasurementRow label="Comprimento da manga" value={formatMeasurement(sizeGuideVariant.sleeveLength)} />
+                      <MeasurementRow label="Ombro a ombro" value={formatMeasurement(sizeGuideVariant.shoulderWidth)} />
+                      <MeasurementRow label="Circunferência do tórax" value={formatMeasurement(sizeGuideVariant.chestCircumference)} />
+                    </>
+                  ) : (
+                    <>
+                      <MeasurementRow label="Circunferência da cintura" value={formatMeasurement(sizeGuideVariant.waistCircumference)} />
+                      <MeasurementRow label="Circunferência do quadril" value={formatMeasurement(sizeGuideVariant.hipCircumference)} />
+                      <MeasurementRow label="Circunferência da coxa" value={formatMeasurement(sizeGuideVariant.thighCircumference)} />
+                      <MeasurementRow label="Comprimento da entreperna" value={formatMeasurement(sizeGuideVariant.inseamLength)} />
+                    </>
+                  )}
+                </div>
+
+                <p className="mt-5 text-xs leading-5 text-neutral-500">
+                  As medidas estão em centímetros e podem apresentar pequena variação de fabricação.
+                </p>
+                <button
+                  type="button"
+                  disabled={sizeGuideVariant.stock <= 0}
+                  onClick={() => {
+                    selectVariant(sizeGuideVariant);
+                    setSizeGuideOpen(false);
+                  }}
+                  className="mt-6 h-12 w-full rounded-xl bg-[#b98218] font-bold text-white hover:bg-[#9f6f14] disabled:cursor-not-allowed disabled:bg-neutral-300"
+                >
+                  {sizeGuideVariant.stock > 0
+                    ? `Escolher tamanho ${sizeGuideVariant.size}`
+                    : `Tamanho ${sizeGuideVariant.size} esgotado`}
+                </button>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/*
        * O navegador guarda os dados somente
        * para montar visualmente o carrinho.
@@ -1065,37 +1078,17 @@ export default function AddToCartButton({
   );
 }
 
-function TableHeader({
-  children,
+function MeasurementRow({
+  label,
+  value,
 }: {
-  children:
-    React.ReactNode;
+  label: string;
+  value: string;
 }) {
   return (
-    <th className="whitespace-nowrap px-3 py-3 font-bold">
-      {children}
-    </th>
-  );
-}
-
-function TableCell({
-  children,
-  bold = false,
-}: {
-  children:
-    React.ReactNode;
-
-  bold?: boolean;
-}) {
-  return (
-    <td
-      className={`whitespace-nowrap px-3 py-3 ${
-        bold
-          ? "font-extrabold text-[#20170f]"
-          : "text-neutral-600"
-      }`}
-    >
-      {children}
-    </td>
+    <div className="flex items-center justify-between gap-5 py-4 text-sm">
+      <span className="text-neutral-600">{label}</span>
+      <strong className="shrink-0 text-[#20170f]">{value}</strong>
+    </div>
   );
 }

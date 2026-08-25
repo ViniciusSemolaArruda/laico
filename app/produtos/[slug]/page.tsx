@@ -93,30 +93,29 @@ function formatPrice(
   );
 }
 
-function formatMeasurement(
-  value: unknown,
-  suffix: string
-) {
-  const number =
-    Number(value);
-
-  if (
-    !Number.isFinite(
-      number
-    ) ||
-    number <= 0
-  ) {
-    return null;
-  }
-
-  return `${number.toLocaleString(
-    "pt-BR",
-    {
-      maximumFractionDigits:
-        3,
-    }
-  )} ${suffix}`;
-}
+/*
+ * As dimensões abaixo são referentes à embalagem utilizada
+ * no envio. Elas continuam salvas no banco e utilizadas no
+ * cálculo do frete, mas não são exibidas ao cliente.
+ *
+ * function formatMeasurement(
+ *   value: unknown,
+ *   suffix: string
+ * ) {
+ *   const number = Number(value);
+ *
+ *   if (
+ *     !Number.isFinite(number) ||
+ *     number <= 0
+ *   ) {
+ *     return null;
+ *   }
+ *
+ *   return `${number.toLocaleString("pt-BR", {
+ *     maximumFractionDigits: 3,
+ *   })} ${suffix}`;
+ * }
+ */
 
 function decimalToNumber(
   value: unknown
@@ -740,59 +739,35 @@ export default async function ProductPage({
    * =======================================================
    */
 
-  const measurements =
-    [
-      {
-        label:
-          "Peso",
-
-        value:
-          formatMeasurement(
-            product.weight,
-            "kg"
-          ),
-      },
-      {
-        label:
-          "Altura",
-
-        value:
-          formatMeasurement(
-            product.height,
-            "cm"
-          ),
-      },
-      {
-        label:
-          "Largura",
-
-        value:
-          formatMeasurement(
-            product.width,
-            "cm"
-          ),
-      },
-      {
-        label:
-          "Comprimento",
-
-        value:
-          formatMeasurement(
-            product.length,
-            "cm"
-          ),
-      },
-    ].filter(
-      (
-        item
-      ): item is {
-        label: string;
-        value: string;
-      } =>
-        Boolean(
-          item.value
-        )
-    );
+  /*
+   * Estas são as medidas da embalagem. O bloco foi mantido
+   * comentado para poder ser reutilizado futuramente, mas não
+   * deve aparecer na página pública do produto.
+   *
+   * const measurements = [
+   *   {
+   *     label: "Peso",
+   *     value: formatMeasurement(product.weight, "kg"),
+   *   },
+   *   {
+   *     label: "Altura",
+   *     value: formatMeasurement(product.height, "cm"),
+   *   },
+   *   {
+   *     label: "Largura",
+   *     value: formatMeasurement(product.width, "cm"),
+   *   },
+   *   {
+   *     label: "Comprimento",
+   *     value: formatMeasurement(product.length, "cm"),
+   *   },
+   * ].filter(
+   *   (item): item is {
+   *     label: string;
+   *     value: string;
+   *   } => Boolean(item.value)
+   * );
+   */
 
   return (
     <main className="min-h-screen bg-[#fffdf9]">
@@ -961,35 +936,32 @@ export default async function ProductPage({
               </div>
             )}
 
-            {measurements.length >
-              0 && (
-              <div className="mt-6 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                {measurements.map(
-                  (
-                    measurement
-                  ) => (
-                    <div
-                      key={
-                        measurement.label
-                      }
-                      className="rounded-xl border border-[#e8dcc2] bg-white p-3"
-                    >
-                      <strong className="block text-xs text-[#20170f]">
-                        {
-                          measurement.label
-                        }
-                      </strong>
-
-                      <span className="mt-1 block text-neutral-600">
-                        {
-                          measurement.value
-                        }
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
+            {/*
+             * PESO E DIMENSÕES DA EMBALAGEM
+             *
+             * Este bloco não deve ser exibido ao cliente, pois
+             * peso, altura, largura e comprimento representam a
+             * embalagem usada no frete, não as medidas do produto.
+             *
+             * {measurements.length > 0 && (
+             *   <div className="mt-6 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+             *     {measurements.map((measurement) => (
+             *       <div
+             *         key={measurement.label}
+             *         className="rounded-xl border border-[#e8dcc2] bg-white p-3"
+             *       >
+             *         <strong className="block text-xs text-[#20170f]">
+             *           {measurement.label}
+             *         </strong>
+             *
+             *         <span className="mt-1 block text-neutral-600">
+             *           {measurement.value}
+             *         </span>
+             *       </div>
+             *     ))}
+             *   </div>
+             * )}
+             */}
 
             {availableStock > 0 ? (
               <p className="mt-5 flex items-center gap-2 text-sm font-bold text-green-700">
