@@ -17,6 +17,7 @@ import {
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -492,6 +493,9 @@ export default function AddToCartButton({
   const [activeMeasurement, setActiveMeasurement] =
     useState<MeasurementKey>("pieceLength");
 
+  const mobileIllustrationRef =
+    useRef<HTMLDivElement>(null);
+
   const clothing =
     isClothingType(
       product.productType
@@ -664,6 +668,24 @@ export default function AddToCartButton({
       product.productType,
       sizeGuideVariant,
     ]);
+
+  function activateGuideMeasurement(
+    measurement: MeasurementKey
+  ) {
+    setActiveMeasurement(measurement);
+
+    if (
+      typeof window !== "undefined" &&
+      window.innerWidth < 1024
+    ) {
+      window.requestAnimationFrame(() => {
+        mobileIllustrationRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    }
+  }
 
   useEffect(() => {
     if (!sizeGuideOpen) {
@@ -1201,7 +1223,7 @@ export default function AddToCartButton({
             </button>
 
             <div className="grid min-h-[590px] grid-cols-1 lg:grid-cols-[350px_minmax(0,1fr)]">
-              <aside className="border-b border-[#dedede] bg-white p-5 pt-7 lg:border-b-0 lg:border-r lg:p-7">
+              <aside className="hidden border-r border-[#dedede] bg-white p-7 lg:block">
                 <h2 id="size-guide-title" className="text-center text-lg font-medium text-[#20170f]">
                   Tabela de tamanhos
                 </h2>
@@ -1224,6 +1246,10 @@ export default function AddToCartButton({
               </aside>
 
               <section className="p-5 pt-14 sm:p-8 sm:pt-14 lg:px-6">
+                <h2 className="mb-5 text-center text-xl font-semibold text-[#20170f] lg:hidden">
+                  Tabela de tamanhos
+                </h2>
+
                 <p className="text-center text-sm text-[#20170f]">
                   Selecione um tamanho e verifique as medidas
                 </p>
@@ -1291,13 +1317,30 @@ export default function AddToCartButton({
                       label={measurement.label}
                       value={measurement.value}
                       active={activeMeasurement === measurement.key}
-                      onActivate={() => setActiveMeasurement(measurement.key)}
+                      onActivate={() => activateGuideMeasurement(measurement.key)}
                     />
                   ))}
                 </div>
 
+                <div
+                  ref={mobileIllustrationRef}
+                  className="scroll-mt-4 pt-6 lg:hidden"
+                >
+                  <div className="rounded-xl border border-[#dedede] bg-[#f2f2f2] p-3">
+                    <MeasurementIllustration
+                      productType={product.productType}
+                      mode={guideMode}
+                      measurement={activeMeasurement}
+                    />
+                  </div>
+
+                  <p className="mt-4 text-sm leading-5 text-[#20170f]">
+                    {getMeasurementHelp(activeMeasurement)}
+                  </p>
+                </div>
+
                 <p className="mt-5 text-xs leading-5 text-neutral-500">
-                  Passe o mouse ou toque em uma medida para visualizar exatamente onde medir.
+                  No computador, passe o mouse. No celular, toque em uma medida para visualizar como medir.
                 </p>
                 <button
                   type="button"
@@ -1399,154 +1442,72 @@ function MeasurementIllustration({
   mode: GuideMode;
   measurement: MeasurementKey;
 }) {
-  const red = "#e64b4b";
-  const line = "#333333";
+  void productType;
+  void mode;
 
-  if (mode === "body") {
-    const top =
-      measurement === "bodyChest"
-        ? "31%"
-        : measurement === "bodyWaist"
-          ? "44%"
-          : "53%";
-
-    return (
-      <div className="relative aspect-square w-full max-w-[290px]">
-        <img
-          src="/images/size-guide/boneco-unissex.png"
-          alt="Manequim unissex para demonstração de medidas corporais"
-          className="h-full w-full object-contain"
-          draggable={false}
-        />
-
-        <MeasurementLine
-          left="36%"
-          top={top}
-          width="28%"
-        />
-      </div>
-    );
-  }
-
-  if (productType === "CLOTHING_BOTTOM") {
-    let marker = (
-      <line x1="92" y1="70" x2="188" y2="70" stroke={red} strokeWidth="4" />
-    );
-
-    if (measurement === "pieceLength") {
-      marker = <line x1="80" y1="68" x2="72" y2="270" stroke={red} strokeWidth="4" />;
-    } else if (measurement === "hipCircumference") {
-      marker = <line x1="80" y1="112" x2="200" y2="112" stroke={red} strokeWidth="4" />;
-    } else if (measurement === "thighCircumference") {
-      marker = <line x1="88" y1="145" x2="139" y2="145" stroke={red} strokeWidth="4" />;
-    } else if (measurement === "inseamLength") {
-      marker = <line x1="140" y1="125" x2="145" y2="270" stroke={red} strokeWidth="4" />;
+  const images: Record<
+    MeasurementKey,
+    {
+      src: string;
+      alt: string;
     }
+  > = {
+    bodyChest: {
+      src: "/images/size-guide/medida-torax-busto.png",
+      alt: "Como medir o tórax ou busto no corpo",
+    },
+    bodyWaist: {
+      src: "/images/size-guide/medida-cintura.png",
+      alt: "Como medir a cintura no corpo",
+    },
+    bodyHip: {
+      src: "/images/size-guide/medida-cintura.png",
+      alt: "Como medir a região do quadril",
+    },
+    pieceLength: {
+      src: "/images/size-guide/medida-comprimeto.png",
+      alt: "Como medir o comprimento da camisa",
+    },
+    sleeveLength: {
+      src: "/images/size-guide/medida-manga.png",
+      alt: "Como medir o comprimento da manga",
+    },
+    shoulderWidth: {
+      src: "/images/size-guide/medida-ombro.png",
+      alt: "Como medir de ombro a ombro",
+    },
+    chestCircumference: {
+      src: "/images/size-guide/medida-torax.png",
+      alt: "Como medir a circunferência do tórax da camisa",
+    },
+    waistCircumference: {
+      src: "/images/size-guide/medida-cintura.png",
+      alt: "Como medir a cintura da peça",
+    },
+    hipCircumference: {
+      src: "/images/size-guide/medida-cintura.png",
+      alt: "Como medir o quadril da peça",
+    },
+    thighCircumference: {
+      src: "/images/size-guide/medida-cintura.png",
+      alt: "Como medir a coxa da peça",
+    },
+    inseamLength: {
+      src: "/images/size-guide/medida-comprimeto.png",
+      alt: "Como medir o comprimento interno da perna",
+    },
+  };
 
-    return (
-      <svg viewBox="0 0 280 300" className="h-[270px] w-full max-w-[270px]" role="img" aria-label="Ilustração da medida da calça selecionada">
-        <path d="M83 52 L197 52 L202 119 L181 276 L143 276 L140 145 L137 276 L99 276 L78 119 Z" fill="white" stroke={line} strokeWidth="2" />
-        <line x1="83" y1="70" x2="197" y2="70" stroke={line} strokeWidth="1.5" strokeDasharray="4 3" />
-        {marker}
-      </svg>
-    );
-  }
+  const image = images[measurement];
 
   return (
-    <div className="relative aspect-square w-full max-w-[290px]">
+    <div className="flex min-h-[250px] w-full items-center justify-center overflow-hidden rounded-lg bg-[#eeeeee]">
       <img
-        src="/images/size-guide/camisa-unissex.png"
-        alt="Camisa unissex para demonstração das medidas da peça"
-        className="h-full w-full object-contain"
+        src={image.src}
+        alt={image.alt}
+        className="h-auto max-h-[310px] w-full object-contain"
         draggable={false}
       />
-
-      {measurement === "pieceLength" && (
-        <MeasurementLine
-          left="50%"
-          top="50%"
-          width="65%"
-          vertical
-        />
-      )}
-
-      {measurement === "sleeveLength" && (
-        <MeasurementLine
-          left="72%"
-          top="27%"
-          width="20%"
-          rotate={32}
-        />
-      )}
-
-      {measurement === "shoulderWidth" && (
-        <MeasurementLine
-          left="27%"
-          top="15%"
-          width="46%"
-          dashed
-        />
-      )}
-
-      {measurement === "chestCircumference" && (
-        <MeasurementLine
-          left="23%"
-          top="39%"
-          width="54%"
-        />
-      )}
     </div>
-  );
-}
-
-function MeasurementLine({
-  left,
-  top,
-  width,
-  vertical = false,
-  rotate = 0,
-  dashed = false,
-}: {
-  left: string;
-  top: string;
-  width: string;
-  vertical?: boolean;
-  rotate?: number;
-  dashed?: boolean;
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      className="pointer-events-none absolute z-10 block"
-      style={{
-        left,
-        top,
-        width: vertical ? "3px" : width,
-        height: vertical ? width : "3px",
-        backgroundColor: dashed ? "transparent" : "#ef4444",
-        backgroundImage: dashed
-          ? "repeating-linear-gradient(90deg, #ef4444 0 9px, transparent 9px 15px)"
-          : undefined,
-        transform: `translate(-50%, -50%) rotate(${rotate}deg)`,
-        transformOrigin: "center",
-        boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
-      }}
-    >
-      {!dashed && (
-        <>
-          <span className={`absolute bg-[#ef4444] ${
-            vertical
-              ? "left-1/2 top-0 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45"
-              : "left-0 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45"
-          }`} />
-
-          <span className={`absolute bg-[#ef4444] ${
-            vertical
-              ? "bottom-0 left-1/2 h-3 w-3 -translate-x-1/2 translate-y-1/2 rotate-45"
-              : "right-0 top-1/2 h-3 w-3 translate-x-1/2 -translate-y-1/2 rotate-45"
-          }`} />
-        </>
-      )}
-    </span>
   );
 }
