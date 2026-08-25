@@ -1501,11 +1501,11 @@ function MeasurementIllustration({
   const image = images[measurement];
 
   return (
-    <div className="flex min-h-[250px] w-full items-center justify-center overflow-hidden rounded-lg bg-[#eeeeee]">
+    <div className="flex h-[310px] w-full items-center justify-center overflow-hidden rounded-lg bg-[#eeeeee] sm:h-[340px] lg:h-[310px]">
       <img
         src={image.src}
         alt={image.alt}
-        className="h-auto max-h-[310px] w-full object-contain"
+        className="h-full w-full scale-[1.12] object-cover object-center"
         draggable={false}
       />
     </div>
