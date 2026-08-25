@@ -119,6 +119,13 @@ type VariantInput = {
   hipCircumference: number | null;
   thighCircumference: number | null;
   inseamLength: number | null;
+
+  bodyChestMinimum: number | null;
+  bodyChestMaximum: number | null;
+  bodyWaistMinimum: number | null;
+  bodyWaistMaximum: number | null;
+  bodyHipMinimum: number | null;
+  bodyHipMaximum: number | null;
 };
 
 class ValidationError extends Error {}
@@ -759,6 +766,30 @@ function parseVariants(
               `Circunferência do tórax do tamanho ${size}`
             );
 
+          const bodyChest =
+            parseBodyMeasurementRange({
+              data,
+              minimumField:
+                "bodyChestMinimum",
+              maximumField:
+                "bodyChestMaximum",
+              label:
+                "Tórax corporal",
+              size,
+            });
+
+          const bodyWaist =
+            parseBodyMeasurementRange({
+              data,
+              minimumField:
+                "bodyWaistMinimum",
+              maximumField:
+                "bodyWaistMaximum",
+              label:
+                "Cintura corporal",
+              size,
+            });
+
           return {
             size:
               size as ClothingSize,
@@ -781,6 +812,24 @@ function parseVariants(
               null,
 
             inseamLength:
+              null,
+
+            bodyChestMinimum:
+              bodyChest.minimum,
+
+            bodyChestMaximum:
+              bodyChest.maximum,
+
+            bodyWaistMinimum:
+              bodyWaist.minimum,
+
+            bodyWaistMaximum:
+              bodyWaist.maximum,
+
+            bodyHipMinimum:
+              null,
+
+            bodyHipMaximum:
               null,
           };
         }
@@ -820,6 +869,30 @@ function parseVariants(
             `Comprimento interno da perna do tamanho ${size}`
           );
 
+        const bodyWaist =
+          parseBodyMeasurementRange({
+            data,
+            minimumField:
+              "bodyWaistMinimum",
+            maximumField:
+              "bodyWaistMaximum",
+            label:
+              "Cintura corporal",
+            size,
+          });
+
+        const bodyHip =
+          parseBodyMeasurementRange({
+            data,
+            minimumField:
+              "bodyHipMinimum",
+            maximumField:
+              "bodyHipMaximum",
+            label:
+              "Quadril corporal",
+            size,
+          });
+
         return {
           size:
             size as ClothingSize,
@@ -842,6 +915,24 @@ function parseVariants(
           hipCircumference,
           thighCircumference,
           inseamLength,
+
+          bodyChestMinimum:
+            null,
+
+          bodyChestMaximum:
+            null,
+
+          bodyWaistMinimum:
+            bodyWaist.minimum,
+
+          bodyWaistMaximum:
+            bodyWaist.maximum,
+
+          bodyHipMinimum:
+            bodyHip.minimum,
+
+          bodyHipMaximum:
+            bodyHip.maximum,
         };
       }
     );
@@ -1625,6 +1716,36 @@ export async function POST(
                                   decimalToDatabase(
                                     variant.inseamLength
                                   ),
+
+                                bodyChestMinimum:
+                                  decimalToDatabase(
+                                    variant.bodyChestMinimum
+                                  ),
+
+                                bodyChestMaximum:
+                                  decimalToDatabase(
+                                    variant.bodyChestMaximum
+                                  ),
+
+                                bodyWaistMinimum:
+                                  decimalToDatabase(
+                                    variant.bodyWaistMinimum
+                                  ),
+
+                                bodyWaistMaximum:
+                                  decimalToDatabase(
+                                    variant.bodyWaistMaximum
+                                  ),
+
+                                bodyHipMinimum:
+                                  decimalToDatabase(
+                                    variant.bodyHipMinimum
+                                  ),
+
+                                bodyHipMaximum:
+                                  decimalToDatabase(
+                                    variant.bodyHipMaximum
+                                  ),
                               })
                             ),
                         }
@@ -1867,4 +1988,52 @@ export async function POST(
       500
     );
   }
+}
+
+function parseBodyMeasurementRange({
+  data,
+  minimumField,
+  maximumField,
+  label,
+  size,
+}: {
+  data: Record<string, unknown>;
+  minimumField: string;
+  maximumField: string;
+  label: string;
+  size: string;
+}) {
+  const minimum =
+    parseVariantMeasurement(
+      data,
+      minimumField,
+      `${label} mínima do tamanho ${size}`
+    );
+
+  const maximum =
+    parseVariantMeasurement(
+      data,
+      maximumField,
+      `${label} máxima do tamanho ${size}`
+    );
+
+  if (
+    minimum === null ||
+    maximum === null
+  ) {
+    throw new ValidationError(
+      `Informe a faixa de ${label.toLowerCase()} do tamanho ${size}.`
+    );
+  }
+
+  if (maximum < minimum) {
+    throw new ValidationError(
+      `${label} máxima do tamanho ${size} não pode ser menor que a mínima.`
+    );
+  }
+
+  return {
+    minimum,
+    maximum,
+  };
 }

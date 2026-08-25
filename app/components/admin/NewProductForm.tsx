@@ -153,6 +153,13 @@ type VariantDraft = {
   hipCircumference: string;
   thighCircumference: string;
   inseamLength: string;
+
+  bodyChestMinimum: string;
+  bodyChestMaximum: string;
+  bodyWaistMinimum: string;
+  bodyWaistMaximum: string;
+  bodyHipMinimum: string;
+  bodyHipMaximum: string;
 };
 
 type UploadSignatureResponse = {
@@ -203,6 +210,13 @@ function createEmptyVariant(
     hipCircumference: "",
     thighCircumference: "",
     inseamLength: "",
+
+    bodyChestMinimum: "",
+    bodyChestMaximum: "",
+    bodyWaistMinimum: "",
+    bodyWaistMaximum: "",
+    bodyHipMinimum: "",
+    bodyHipMaximum: "",
   };
 }
 
@@ -791,6 +805,30 @@ export default function NewProductForm() {
                 label:
                   "circunferência do tórax",
               },
+              {
+                value:
+                  variant.bodyChestMinimum,
+                label:
+                  "tórax corporal mínimo",
+              },
+              {
+                value:
+                  variant.bodyChestMaximum,
+                label:
+                  "tórax corporal máximo",
+              },
+              {
+                value:
+                  variant.bodyWaistMinimum,
+                label:
+                  "cintura corporal mínima",
+              },
+              {
+                value:
+                  variant.bodyWaistMaximum,
+                label:
+                  "cintura corporal máxima",
+              },
             ]
           : [
               {
@@ -823,6 +861,30 @@ export default function NewProductForm() {
                 label:
                   "comprimento interno da perna",
               },
+              {
+                value:
+                  variant.bodyWaistMinimum,
+                label:
+                  "cintura corporal mínima",
+              },
+              {
+                value:
+                  variant.bodyWaistMaximum,
+                label:
+                  "cintura corporal máxima",
+              },
+              {
+                value:
+                  variant.bodyHipMinimum,
+                label:
+                  "quadril corporal mínimo",
+              },
+              {
+                value:
+                  variant.bodyHipMaximum,
+                label:
+                  "quadril corporal máximo",
+              },
             ];
 
       for (
@@ -847,6 +909,71 @@ export default function NewProductForm() {
         ) {
           setError(
             `Informe ${field.label} do tamanho ${variant.size}.`
+          );
+
+          return false;
+        }
+      }
+
+      const ranges =
+        isClothingTop
+          ? [
+              {
+                minimum:
+                  variant.bodyChestMinimum,
+                maximum:
+                  variant.bodyChestMaximum,
+                label:
+                  "tórax corporal",
+              },
+              {
+                minimum:
+                  variant.bodyWaistMinimum,
+                maximum:
+                  variant.bodyWaistMaximum,
+                label:
+                  "cintura corporal",
+              },
+            ]
+          : [
+              {
+                minimum:
+                  variant.bodyWaistMinimum,
+                maximum:
+                  variant.bodyWaistMaximum,
+                label:
+                  "cintura corporal",
+              },
+              {
+                minimum:
+                  variant.bodyHipMinimum,
+                maximum:
+                  variant.bodyHipMaximum,
+                label:
+                  "quadril corporal",
+              },
+            ];
+
+      for (const range of ranges) {
+        const minimum =
+          Number(
+            range.minimum.replace(
+              ",",
+              "."
+            )
+          );
+
+        const maximum =
+          Number(
+            range.maximum.replace(
+              ",",
+              "."
+            )
+          );
+
+        if (maximum < minimum) {
+          setError(
+            `A medida máxima de ${range.label} do tamanho ${variant.size} não pode ser menor que a mínima.`
           );
 
           return false;
@@ -2019,7 +2146,12 @@ export default function NewProductForm() {
                     <div className="my-5 h-px bg-[#e8dcc2]" />
 
                     {isClothingTop && (
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <div>
+                        <p className="mb-3 text-sm font-extrabold text-[#20170f]">
+                          Medidas da peça
+                        </p>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <VariantField
                           label="Comprimento da peça (cm) *"
                           value={
@@ -2095,11 +2227,89 @@ export default function NewProductForm() {
                             submitting
                           }
                         />
+                        </div>
+
+                        <div className="my-5 h-px bg-[#e8dcc2]" />
+
+                        <p className="mb-1 text-sm font-extrabold text-[#20170f]">
+                          Medidas corporais recomendadas
+                        </p>
+
+                        <p className="mb-4 text-xs leading-5 text-neutral-500">
+                          Informe a faixa de medidas do corpo que veste este tamanho. Essas informações aparecerão no guia de tamanhos do cliente.
+                        </p>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                          <VariantField
+                            label="Tórax mínimo (cm) *"
+                            value={
+                              variant.bodyChestMinimum
+                            }
+                            onChange={(value) =>
+                              updateVariant(
+                                variant.size,
+                                "bodyChestMinimum",
+                                value
+                              )
+                            }
+                            disabled={submitting}
+                          />
+
+                          <VariantField
+                            label="Tórax máximo (cm) *"
+                            value={
+                              variant.bodyChestMaximum
+                            }
+                            onChange={(value) =>
+                              updateVariant(
+                                variant.size,
+                                "bodyChestMaximum",
+                                value
+                              )
+                            }
+                            disabled={submitting}
+                          />
+
+                          <VariantField
+                            label="Cintura mínima (cm) *"
+                            value={
+                              variant.bodyWaistMinimum
+                            }
+                            onChange={(value) =>
+                              updateVariant(
+                                variant.size,
+                                "bodyWaistMinimum",
+                                value
+                              )
+                            }
+                            disabled={submitting}
+                          />
+
+                          <VariantField
+                            label="Cintura máxima (cm) *"
+                            value={
+                              variant.bodyWaistMaximum
+                            }
+                            onChange={(value) =>
+                              updateVariant(
+                                variant.size,
+                                "bodyWaistMaximum",
+                                value
+                              )
+                            }
+                            disabled={submitting}
+                          />
+                        </div>
                       </div>
                     )}
 
                     {isClothingBottom && (
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                      <div>
+                        <p className="mb-3 text-sm font-extrabold text-[#20170f]">
+                          Medidas da peça
+                        </p>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                         <VariantField
                           label="Comprimento total (cm) *"
                           value={
@@ -2194,6 +2404,79 @@ export default function NewProductForm() {
                             submitting
                           }
                         />
+                        </div>
+
+                        <div className="my-5 h-px bg-[#e8dcc2]" />
+
+                        <p className="mb-1 text-sm font-extrabold text-[#20170f]">
+                          Medidas corporais recomendadas
+                        </p>
+
+                        <p className="mb-4 text-xs leading-5 text-neutral-500">
+                          Informe a faixa de medidas do corpo que veste este tamanho. Essas informações aparecerão no guia de tamanhos do cliente.
+                        </p>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                          <VariantField
+                            label="Cintura mínima (cm) *"
+                            value={
+                              variant.bodyWaistMinimum
+                            }
+                            onChange={(value) =>
+                              updateVariant(
+                                variant.size,
+                                "bodyWaistMinimum",
+                                value
+                              )
+                            }
+                            disabled={submitting}
+                          />
+
+                          <VariantField
+                            label="Cintura máxima (cm) *"
+                            value={
+                              variant.bodyWaistMaximum
+                            }
+                            onChange={(value) =>
+                              updateVariant(
+                                variant.size,
+                                "bodyWaistMaximum",
+                                value
+                              )
+                            }
+                            disabled={submitting}
+                          />
+
+                          <VariantField
+                            label="Quadril mínimo (cm) *"
+                            value={
+                              variant.bodyHipMinimum
+                            }
+                            onChange={(value) =>
+                              updateVariant(
+                                variant.size,
+                                "bodyHipMinimum",
+                                value
+                              )
+                            }
+                            disabled={submitting}
+                          />
+
+                          <VariantField
+                            label="Quadril máximo (cm) *"
+                            value={
+                              variant.bodyHipMaximum
+                            }
+                            onChange={(value) =>
+                              updateVariant(
+                                variant.size,
+                                "bodyHipMaximum",
+                                value
+                              )
+                            }
+                            disabled={submitting}
+                          />
+                        </div>
                       </div>
                     )}
                   </div>

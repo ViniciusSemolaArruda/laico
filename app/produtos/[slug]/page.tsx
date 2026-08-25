@@ -13,7 +13,6 @@ import type {
 } from "react";
 
 import {
-  CheckCircle,
   CreditCard,
   Home,
   RotateCcw,
@@ -450,6 +449,24 @@ export default async function ProductPage({
 
             inseamLength:
               true,
+
+            bodyChestMinimum:
+              true,
+
+            bodyChestMaximum:
+              true,
+
+            bodyWaistMinimum:
+              true,
+
+            bodyWaistMaximum:
+              true,
+
+            bodyHipMinimum:
+              true,
+
+            bodyHipMaximum:
+              true,
           },
         },
       },
@@ -621,6 +638,36 @@ export default async function ProductPage({
         inseamLength:
           decimalToNumber(
             variant.inseamLength
+          ),
+
+        bodyChestMinimum:
+          decimalToNumber(
+            variant.bodyChestMinimum
+          ),
+
+        bodyChestMaximum:
+          decimalToNumber(
+            variant.bodyChestMaximum
+          ),
+
+        bodyWaistMinimum:
+          decimalToNumber(
+            variant.bodyWaistMinimum
+          ),
+
+        bodyWaistMaximum:
+          decimalToNumber(
+            variant.bodyWaistMaximum
+          ),
+
+        bodyHipMinimum:
+          decimalToNumber(
+            variant.bodyHipMinimum
+          ),
+
+        bodyHipMaximum:
+          decimalToNumber(
+            variant.bodyHipMaximum
           ),
       })
     );
@@ -963,18 +1010,7 @@ export default async function ProductPage({
              * )}
              */}
 
-            {availableStock > 0 ? (
-              <p className="mt-5 flex items-center gap-2 text-sm font-bold text-green-700">
-                <CheckCircle
-                  size={17}
-                  aria-hidden="true"
-                />
-
-                Em estoque:{" "}
-                {availableStock}{" "}
-                unidade(s)
-              </p>
-            ) : (
+            {availableStock <= 0 && (
               <p className="mt-5 text-sm font-bold text-red-600">
                 Produto indisponível no momento
               </p>
@@ -1151,18 +1187,11 @@ export default async function ProductPage({
                       )}
                     </p>
 
-                    <p
-                      className={`mt-2 text-[11px] font-bold ${
-                        item.stock > 0
-                          ? "text-green-700"
-                          : "text-red-600"
-                      }`}
-                    >
-                      {item.stock >
-                      0
-                        ? "Disponível"
-                        : "Esgotado"}
-                    </p>
+                    {item.stock <= 0 && (
+                      <p className="mt-2 text-[11px] font-bold text-red-600">
+                        Esgotado
+                      </p>
+                    )}
                   </Link>
                 );
               }

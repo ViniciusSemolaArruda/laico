@@ -528,6 +528,24 @@ model ProductVariant {
   thighCircumference Decimal? @db.Decimal(10, 2)
   inseamLength       Decimal? @db.Decimal(10, 2)
 
+  /**
+   * =======================================================
+   * MEDIDAS CORPORAIS RECOMENDADAS
+   * =======================================================
+   * Faixas mínimas e máximas, em centímetros, usadas pelo
+   * guia de tamanhos da página pública.
+   * Vestuário superior utiliza principalmente tórax e cintura.
+   * Vestuário inferior utiliza principalmente cintura e quadril.
+   */
+  bodyChestMinimum Decimal? @db.Decimal(10, 2)
+  bodyChestMaximum Decimal? @db.Decimal(10, 2)
+
+  bodyWaistMinimum Decimal? @db.Decimal(10, 2)
+  bodyWaistMaximum Decimal? @db.Decimal(10, 2)
+
+  bodyHipMinimum Decimal? @db.Decimal(10, 2)
+  bodyHipMaximum Decimal? @db.Decimal(10, 2)
+
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
