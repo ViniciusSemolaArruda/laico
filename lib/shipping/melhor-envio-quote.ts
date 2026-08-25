@@ -432,11 +432,36 @@ function normalizeQuoteOptions(
      * a propriedade error para um serviço
      * indisponível. Esses itens são ignorados.
      */
-    if (
-      item.error
-    ) {
-      continue;
-    }
+    if (item.error) {
+  if (
+    process.env.NODE_ENV ===
+    "development"
+  ) {
+    console.error(
+      "Serviço de frete recusado:",
+      {
+        id:
+          item.id,
+
+        name:
+          item.name,
+
+        error:
+          typeof item.error ===
+          "string"
+            ? item.error
+              .trim()
+              .slice(
+                0,
+                300
+              )
+            : "Erro não informado",
+      }
+    );
+  }
+
+  continue;
+}
 
     const serviceId =
       normalizeIdentifier(
@@ -739,33 +764,42 @@ export async function calculateMelhorEnvioQuote({
           "POST",
 
         body: {
-          from: {
-            postal_code:
-              config.originCep,
-          },
+  from: {
+    postal_code:
+      config.originCep,
+  },
 
-          to: {
-            postal_code:
-              normalizedDestinationCep,
-          },
+  to: {
+    postal_code:
+      normalizedDestinationCep,
+  },
 
-          products:
-            calculatedPackage.products,
+  /*
+   * 1 = PAC
+   * 2 = SEDEX
+   * 3 = Jadlog .Package
+   * 4 = Jadlog .Com
+   */
+  services:
+    "1,2,3,4",
 
-          options: {
-            receipt:
-              false,
+  products:
+    calculatedPackage.products,
 
-            own_hand:
-              false,
+  options: {
+    receipt:
+      false,
 
-            collect:
-              false,
+    own_hand:
+      false,
 
-            use_own_contract:
-              false,
-          },
-        },
+    collect:
+      false,
+
+    use_own_contract:
+      false,
+  },
+},
       }
     );
 
