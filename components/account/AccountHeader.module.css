@@ -1,0 +1,121 @@
+.header {
+  position: relative;
+  z-index: 40;
+  width: 100%;
+  background: #fffdf9;
+  border-top: 1px solid #b98218;
+  border-bottom: 1px solid #e8dcc2;
+  box-shadow:
+    0 2px 7px
+    rgba(32, 23, 15, 0.08);
+}
+
+.container {
+  display: flex;
+  width: min(
+    calc(100% - 32px),
+    1300px
+  );
+  min-height: 116px;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  padding: 6px 20px;
+}
+
+.logoLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  text-decoration: none;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.logoLink:hover {
+  opacity: 0.92;
+  transform: scale(1.01);
+}
+
+.logoLink:focus-visible {
+  outline: 2px solid #b98218;
+  outline-offset: 5px;
+}
+
+.logo {
+  display: block;
+  width: auto;
+  max-width: min(
+    290px,
+    72vw
+  );
+  height: 102px;
+  object-fit: contain;
+
+  /*
+   * Mantém as cores douradas
+   * originais da logo.
+   */
+  filter: none;
+}
+
+/*
+ * TABLET
+ */
+
+@media (max-width: 900px) {
+  .container {
+    min-height: 102px;
+  }
+
+  .logo {
+    max-width: 250px;
+    height: 88px;
+  }
+}
+
+/*
+ * CELULAR
+ */
+
+@media (max-width: 600px) {
+  .container {
+    width: min(
+      calc(100% - 20px),
+      1300px
+    );
+    min-height: 84px;
+    padding: 5px 10px;
+  }
+
+  .logo {
+    max-width: 210px;
+    height: 72px;
+  }
+}
+
+@media (max-width: 380px) {
+  .container {
+    min-height: 76px;
+  }
+
+  .logo {
+    max-width: 185px;
+    height: 65px;
+  }
+}
+
+@media (
+  prefers-reduced-motion:
+    reduce
+) {
+  .logoLink {
+    transition: none;
+  }
+
+  .logoLink:hover {
+    transform: none;
+  }
+}

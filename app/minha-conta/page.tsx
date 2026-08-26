@@ -1,25 +1,39 @@
 import {
   ChevronRight,
   Clock3,
+  KeyRound,
+  LogOut,
   MapPin,
   Package,
+  Settings,
   ShieldCheck,
   ShoppingBag,
+  Store,
+  UserRound,
 } from "lucide-react";
 
 import Link from "next/link";
-import { redirect } from "next/navigation";
+
+import {
+  redirect,
+} from "next/navigation";
 
 import AccountActions from "@/components/account/AccountActions";
 import AccountAddresses from "@/components/account/AccountAddresses";
+import AccountHeader from "@/components/account/AccountHeader";
 import AccountPasswordForm from "@/components/account/AccountPasswordForm";
 import AccountProfileForm from "@/components/account/AccountProfileForm";
-
 import Footer from "@/components/Footer";
-import Header from "@/components/Header/Header";
 
-import { getCustomerSession } from "@/lib/customer-auth";
-import { prisma } from "@/lib/prisma";
+import {
+  getCustomerSession,
+} from "@/lib/customer-auth";
+
+import {
+  prisma,
+} from "@/lib/prisma";
+
+import styles from "./MinhaConta.module.css";
 
 export const dynamic =
   "force-dynamic";
@@ -27,9 +41,18 @@ export const dynamic =
 function formatPrice(
   value: unknown
 ) {
-  return Number(
-    value
-  ).toLocaleString(
+  const number =
+    Number(value);
+
+  if (
+    !Number.isFinite(
+      number
+    )
+  ) {
+    return "R$ 0,00";
+  }
+
+  return number.toLocaleString(
     "pt-BR",
     {
       style: "currency",
@@ -44,8 +67,8 @@ function formatDate(
   return new Intl.DateTimeFormat(
     "pt-BR",
     {
-      dateStyle:
-        "medium",
+      dateStyle: "short",
+      timeStyle: "short",
     }
   ).format(date);
 }
@@ -91,38 +114,32 @@ function getStatusLabel(
   );
 }
 
-function getStatusStyle(
+function getStatusClass(
   status: string
 ) {
   switch (status) {
     case "PAID":
     case "DELIVERED":
-      return "bg-green-100 text-green-700";
+      return styles.statusSuccess;
 
     case "PROCESSING":
     case "SHIPPED":
     case "OUT_FOR_DELIVERY":
-      return "bg-blue-100 text-blue-700";
+      return styles.statusShipping;
 
     case "CANCELED":
     case "RETURNED":
-      return "bg-red-100 text-red-700";
+      return styles.statusCanceled;
 
     case "REFUNDED":
-      return "bg-purple-100 text-purple-700";
+      return styles.statusRefunded;
 
     default:
-      return "bg-[#fff8e8] text-[#b98218]";
+      return styles.statusPending;
   }
 }
 
 export default async function MinhaContaPage() {
-  /*
-   * =====================================================
-   * SESSÃO
-   * =====================================================
-   */
-
   const session =
     await getCustomerSession();
 
@@ -131,12 +148,6 @@ export default async function MinhaContaPage() {
       "/entrar?redirect=/minha-conta"
     );
   }
-
-  /*
-   * =====================================================
-   * USUÁRIO
-   * =====================================================
-   */
 
   const user =
     await prisma.user.findFirst({
@@ -189,15 +200,13 @@ export default async function MinhaContaPage() {
               isDefault:
                 "desc",
             },
-
             {
               createdAt:
                 "desc",
             },
           ],
 
-          take:
-            10,
+          take: 10,
 
           select: {
             id: true,
@@ -205,16 +214,11 @@ export default async function MinhaContaPage() {
             cep: true,
             state: true,
             city: true,
-            neighborhood:
-              true,
-            street:
-              true,
-            number:
-              true,
-            complement:
-              true,
-            isDefault:
-              true,
+            neighborhood: true,
+            street: true,
+            number: true,
+            complement: true,
+            isDefault: true,
           },
         },
       },
@@ -225,12 +229,6 @@ export default async function MinhaContaPage() {
       "/entrar"
     );
   }
-
-  /*
-   * =====================================================
-   * PEDIDOS
-   * =====================================================
-   */
 
   const orders =
     await prisma.order.findMany({
@@ -244,17 +242,14 @@ export default async function MinhaContaPage() {
           "desc",
       },
 
-      take:
-        20,
+      take: 20,
 
       select: {
         id: true,
         status: true,
         total: true,
         createdAt: true,
-
-        trackingCode:
-          true,
+        trackingCode: true,
 
         items: {
           select: {
@@ -265,252 +260,219 @@ export default async function MinhaContaPage() {
     });
 
   return (
-    <main className="min-h-screen bg-white">
-      <Header />
+    <main className={styles.page}>
+      <AccountHeader />
 
-      {/*
-       * ===================================================
-       * CONTAINER PRINCIPAL
-       * ===================================================
-       *
-       * max-w-6xl = aproximadamente 1152px.
-       *
-       * Em monitores grandes, o conteúdo não fica
-       * esticado de uma ponta até a outra.
-       */}
+      <div className={styles.container}>
+        {/* SAUDAÇÃO */}
 
-      <div className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 sm:py-9">
-        {/* =================================================
-            CABEÇALHO
-        ================================================= */}
+        <div className={styles.welcome}>
+          <p>
+            Olá{" "}
 
-        <div className="mb-6">
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#b98218]">
-            Área do cliente
-          </p>
-
-          <h1 className="mt-1 text-[28px] font-extrabold leading-tight text-[#20170f] sm:text-[34px]">
-            Minha conta
-          </h1>
-
-          <p className="mt-1 text-sm text-neutral-600">
-            Bem-vindo,{" "}
             <strong>
-              {user.name}
-            </strong>
-            .
+              {user.name}!
+            </strong>{" "}
+
+            Acompanhe seus pedidos e seus dados cadastrais.
           </p>
+
+          <Link
+            href="/catalogo"
+            className={styles.storeButton}
+          >
+            <Store size={17} />
+
+            Voltar para a loja
+          </Link>
         </div>
 
-        {/* =================================================
-            RESUMO
-        =================================================
-            Flex-wrap faz os cards se reorganizarem
-            automaticamente conforme a largura.
-        */}
+        <div className={styles.accountLayout}>
+          {/* MENU LATERAL */}
 
-        <div className="flex flex-wrap gap-4">
-          {/* PEDIDOS */}
+          <aside className={styles.sidebar}>
+            <nav className={styles.sidebarNavigation}>
+              <Link
+                href="#pedidos"
+                className={`${styles.sidebarLink} ${styles.sidebarLinkActive}`}
+              >
+                <Package size={18} />
 
-          <section className="min-w-[230px] flex-1 rounded-2xl border border-[#e8dcc2] bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#fff8e8] text-[#b98218]">
-                <ShoppingBag
-                  size={20}
-                />
-              </div>
+                <span>
+                  Meus pedidos
+                </span>
 
-              <div>
-                <strong className="block text-[22px] leading-none text-[#20170f]">
-                  {
-                    user._count
-                      .orders
-                  }
+                <strong>
+                  {user._count.orders}
                 </strong>
-
-                <p className="mt-1 text-xs text-neutral-500">
-                  Pedidos
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* ENDEREÇOS */}
-
-          <section className="min-w-[230px] flex-1 rounded-2xl border border-[#e8dcc2] bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#fff8e8] text-[#b98218]">
-                <MapPin
-                  size={20}
-                />
-              </div>
-
-              <div>
-                <strong className="block text-[22px] leading-none text-[#20170f]">
-                  {
-                    user._count
-                      .addresses
-                  }
-                </strong>
-
-                <p className="mt-1 text-xs text-neutral-500">
-                  Endereços
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* VERIFICAÇÃO */}
-
-          <section className="min-w-[230px] flex-1 rounded-2xl border border-[#e8dcc2] bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-600">
-                <ShieldCheck
-                  size={20}
-                />
-              </div>
-
-              <div>
-                <strong className="block text-sm text-green-700">
-                  Conta verificada
-                </strong>
-
-                <p className="mt-1 text-xs text-neutral-500">
-                  E-mail confirmado
-                </p>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* =================================================
-            PERFIL + SENHA
-        ================================================= */}
-
-        <div className="mt-5 flex flex-wrap items-start gap-5">
-          <div className="min-w-[300px] basis-[500px] flex-1">
-            <AccountProfileForm
-              initialName={
-                user.name
-              }
-              initialPhone={
-                user.phone
-              }
-              email={
-                user.email
-              }
-            />
-          </div>
-
-          <div className="min-w-[300px] basis-[500px] flex-1">
-            <AccountPasswordForm />
-          </div>
-        </div>
-
-        {/* =================================================
-            ENDEREÇOS + CONTA
-        ================================================= */}
-
-        <div className="mt-5 flex flex-wrap items-start gap-5">
-          {/* ENDEREÇOS RECEBEM MAIS ESPAÇO */}
-
-          <div className="min-w-[300px] basis-[650px] flex-[1.4]">
-            <AccountAddresses
-              initialAddresses={
-                user.addresses
-              }
-            />
-          </div>
-
-          {/* SESSÃO / DESATIVAÇÃO */}
-
-          <div className="min-w-[280px] basis-[340px] flex-1">
-            <AccountActions />
-          </div>
-        </div>
-
-        {/* =================================================
-            PEDIDOS
-        ================================================= */}
-
-        <section className="mt-5 overflow-hidden rounded-2xl border border-[#e8dcc2] bg-white shadow-sm">
-          {/* TOPO */}
-
-          <div className="flex items-center justify-between gap-4 border-b border-[#eee2cc] px-5 py-4 sm:px-6">
-            <div>
-              <h2 className="text-lg font-extrabold text-[#20170f] sm:text-xl">
-                Meus pedidos
-              </h2>
-
-              <p className="mt-0.5 text-xs text-neutral-500 sm:text-sm">
-                Acompanhe suas compras
-                e entregas.
-              </p>
-            </div>
-
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fff8e8] text-[#b98218]">
-              <Package
-                size={20}
-              />
-            </div>
-          </div>
-
-          {/* SEM PEDIDOS */}
-
-          {orders.length ===
-          0 ? (
-            <div className="px-5 py-10 text-center">
-              <ShoppingBag
-                size={32}
-                className="mx-auto text-neutral-300"
-              />
-
-              <strong className="mt-3 block text-base text-[#20170f]">
-                Nenhum pedido
-              </strong>
-
-              <p className="mt-1 text-sm text-neutral-500">
-                Quando você realizar
-                uma compra, ela
-                aparecerá aqui.
-              </p>
+              </Link>
 
               <Link
-                href="/"
-                className="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-[#b98218] px-5 text-sm font-bold text-white transition hover:bg-[#9f6f14]"
+                href="#dados-pessoais"
+                className={styles.sidebarLink}
               >
-                Ver produtos
+                <UserRound size={18} />
+
+                <span>
+                  Dados pessoais
+                </span>
               </Link>
-            </div>
-          ) : (
-            /* LISTA */
 
-            <div className="divide-y divide-[#eee2cc]">
-              {orders.map(
-                (order) => (
-                  <article
-                    key={
-                      order.id
-                    }
-                    className="px-5 py-4 transition hover:bg-[#faf9f6] sm:px-6"
+              <Link
+                href="#enderecos"
+                className={styles.sidebarLink}
+              >
+                <MapPin size={18} />
+
+                <span>
+                  Endereços de entrega
+                </span>
+
+                <strong>
+                  {user._count.addresses}
+                </strong>
+              </Link>
+
+              <Link
+                href="#seguranca"
+                className={styles.sidebarLink}
+              >
+                <KeyRound size={18} />
+
+                <span>
+                  Alterar senha
+                </span>
+              </Link>
+
+              <Link
+                href="#configuracoes"
+                className={styles.sidebarLink}
+              >
+                <Settings size={18} />
+
+                <span>
+                  Configurações
+                </span>
+              </Link>
+
+              <Link
+                href="#configuracoes"
+                className={`${styles.sidebarLink} ${styles.logoutLink}`}
+              >
+                <LogOut size={18} />
+
+                <span>
+                  Sair
+                </span>
+              </Link>
+            </nav>
+          </aside>
+
+          {/* CONTEÚDO */}
+
+          <div className={styles.content}>
+            {/* PEDIDOS */}
+
+            <section
+              id="pedidos"
+              className={`${styles.section} ${styles.anchor}`}
+            >
+              <div className={styles.sectionHeader}>
+                <div>
+                  <h1>
+                    Meus pedidos
+                  </h1>
+
+                  <p>
+                    Acompanhe suas compras e entregas.
+                  </p>
+                </div>
+
+                <div className={styles.sectionIcon}>
+                  <ShoppingBag size={21} />
+                </div>
+              </div>
+
+              {orders.length === 0 ? (
+                <div className={styles.emptyState}>
+                  <ShoppingBag size={38} />
+
+                  <strong>
+                    Nenhum pedido realizado
+                  </strong>
+
+                  <p>
+                    Quando você fizer uma compra, ela aparecerá aqui.
+                  </p>
+
+                  <Link
+                    href="/catalogo"
+                    className={styles.primaryButton}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-4">
-                      {/* ESQUERDA */}
+                    Ver produtos
+                  </Link>
+                </div>
+              ) : (
+                <div className={styles.orderList}>
+                  <div className={styles.orderTableHeader}>
+                    <span>
+                      Pedido
+                    </span>
 
-                      <div className="min-w-[230px] flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <strong className="text-sm text-[#20170f] sm:text-base">
-                            Pedido #
+                    <span>
+                      Valor
+                    </span>
+
+                    <span>
+                      Status
+                    </span>
+
+                    <span>
+                      Detalhes
+                    </span>
+                  </div>
+
+                  {orders.map(
+                    (
+                      order
+                    ) => (
+                      <article
+                        key={order.id}
+                        className={styles.orderItem}
+                      >
+                        <div className={styles.orderIdentity}>
+                          <strong>
+                            LAICO-
                             {order.id
-                              .slice(
-                                0,
-                                8
-                              )
+                              .slice(0, 8)
                               .toUpperCase()}
                           </strong>
 
+                          <span>
+                            <Clock3 size={13} />
+
+                            {formatDate(
+                              order.createdAt
+                            )}
+                          </span>
+
+                          <small>
+                            {
+                              order.items.length
+                            }{" "}
+                            produto(s)
+                          </small>
+                        </div>
+
+                        <strong className={styles.orderPrice}>
+                          {formatPrice(
+                            order.total
+                          )}
+                        </strong>
+
+                        <div className={styles.orderStatus}>
                           <span
-                            className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold sm:text-[11px] ${getStatusStyle(
+                            className={`${styles.statusBadge} ${getStatusClass(
                               order.status
                             )}`}
                           >
@@ -518,73 +480,129 @@ export default async function MinhaContaPage() {
                               order.status
                             )}
                           </span>
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500">
-                          <span className="flex items-center gap-1.5">
-                            <Clock3
-                              size={13}
-                            />
-
-                            {formatDate(
-                              order.createdAt
-                            )}
-                          </span>
-
-                          <span>
-                            {
-                              order
-                                .items
-                                .length
-                            }{" "}
-                            produto(s)
-                          </span>
 
                           {order.trackingCode && (
-                            <span className="font-semibold text-blue-700">
+                            <small>
                               Rastreio disponível
-                            </span>
+                            </small>
                           )}
                         </div>
-                      </div>
-
-                      {/* DIREITA */}
-
-                      <div className="flex items-center gap-4">
-                        <strong className="whitespace-nowrap text-base text-[#20170f]">
-                          {formatPrice(
-                            order.total
-                          )}
-                        </strong>
-
-                        {/*
-                         * O ID não é autorização.
-                         * A página verifica a sessão
-                         * novamente no servidor.
-                         */}
 
                         <Link
                           href={`/meus-pedidos/${order.id}`}
-                          aria-label={`Acompanhar pedido ${order.id
-                            .slice(
-                              0,
-                              8
-                            )
-                            .toUpperCase()}`}
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e8dcc2] text-[#b98218] transition hover:bg-[#fff8e8]"
+                          className={styles.detailsButton}
+                          aria-label="Ver detalhes do pedido"
                         >
-                          <ChevronRight
-                            size={18}
-                          />
+                          <span>
+                            Ver detalhes
+                          </span>
+
+                          <ChevronRight size={17} />
                         </Link>
-                      </div>
-                    </div>
-                  </article>
-                )
+                      </article>
+                    )
+                  )}
+                </div>
               )}
+            </section>
+
+            {/* RESUMO */}
+
+            <div className={styles.summaryGrid}>
+              <div className={styles.summaryCard}>
+                <ShoppingBag size={21} />
+
+                <div>
+                  <strong>
+                    {user._count.orders}
+                  </strong>
+
+                  <span>
+                    Pedidos
+                  </span>
+                </div>
+              </div>
+
+              <div className={styles.summaryCard}>
+                <MapPin size={21} />
+
+                <div>
+                  <strong>
+                    {user._count.addresses}
+                  </strong>
+
+                  <span>
+                    Endereços
+                  </span>
+                </div>
+              </div>
+
+              <div className={styles.summaryCard}>
+                <ShieldCheck size={21} />
+
+                <div>
+                  <strong>
+                    Conta verificada
+                  </strong>
+
+                  <span>
+                    E-mail confirmado
+                  </span>
+                </div>
+              </div>
             </div>
-          )}
-        </section>
+
+            {/* DADOS PESSOAIS */}
+
+            <section
+              id="dados-pessoais"
+              className={`${styles.componentSection} ${styles.anchor}`}
+            >
+              <AccountProfileForm
+                initialName={
+                  user.name
+                }
+                initialPhone={
+                  user.phone
+                }
+                email={
+                  user.email
+                }
+              />
+            </section>
+
+            {/* ENDEREÇOS */}
+
+            <section
+              id="enderecos"
+              className={`${styles.componentSection} ${styles.anchor}`}
+            >
+              <AccountAddresses
+                initialAddresses={
+                  user.addresses
+                }
+              />
+            </section>
+
+            {/* SENHA */}
+
+            <section
+              id="seguranca"
+              className={`${styles.componentSection} ${styles.anchor}`}
+            >
+              <AccountPasswordForm />
+            </section>
+
+            {/* CONFIGURAÇÕES */}
+
+            <section
+              id="configuracoes"
+              className={`${styles.componentSection} ${styles.anchor}`}
+            >
+              <AccountActions />
+            </section>
+          </div>
+        </div>
       </div>
 
       <Footer />

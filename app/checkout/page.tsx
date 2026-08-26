@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Check,
   CheckCircle2,
   CreditCard,
   LoaderCircle,
@@ -157,6 +158,30 @@ type CepLookupResponse = {
     state?: string;
   };
 
+  error?: string;
+};
+
+type SavedAddress = {
+  id: string;
+  name: string;
+  cep: string;
+  state: string;
+  city: string;
+  neighborhood: string;
+  street: string;
+  number: string;
+  complement: string | null;
+  isDefault: boolean;
+};
+
+type AddressListResponse = {
+  addresses?: SavedAddress[];
+  error?: string;
+};
+
+type AddressCreateResponse = {
+  success?: boolean;
+  address?: SavedAddress;
   error?: string;
 };
 
@@ -478,6 +503,36 @@ export default function CheckoutPage() {
     setCepError,
   ] = useState("");
 
+  const [
+    customerAuthenticated,
+    setCustomerAuthenticated,
+  ] = useState(false);
+
+  const [
+    savedAddresses,
+    setSavedAddresses,
+  ] = useState<SavedAddress[]>([]);
+
+  const [
+    selectedAddressId,
+    setSelectedAddressId,
+  ] = useState<string | null>(null);
+
+  const [
+    usingNewAddress,
+    setUsingNewAddress,
+  ] = useState(true);
+
+  const [
+    addressesLoading,
+    setAddressesLoading,
+  ] = useState(true);
+
+  const [
+    addressesError,
+    setAddressesError,
+  ] = useState("");
+
   /*
    * Impede dois envios antes que o React
    * atualize o estado loading.
@@ -574,6 +629,91 @@ export default function CheckoutPage() {
 
     return () =>
       window.clearTimeout(timer);
+  }, []);
+
+  /*
+   * Carrega endereços somente da conta autenticada.
+   * Resposta 401 significa checkout como convidado.
+   */
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadSavedAddresses() {
+      try {
+        const response = await fetch(
+          "/api/account/addresses",
+          {
+            method: "GET",
+            credentials: "same-origin",
+            cache: "no-store",
+            signal: controller.signal,
+          }
+        );
+
+        if (response.status === 401) {
+          setCustomerAuthenticated(false);
+          setUsingNewAddress(true);
+          return;
+        }
+
+        const data = (await response.json().catch(
+          () => ({})
+        )) as AddressListResponse;
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Não foi possível carregar seus endereços."
+          );
+        }
+
+        const addresses = Array.isArray(data.addresses)
+          ? data.addresses
+          : [];
+
+        setCustomerAuthenticated(true);
+        setSavedAddresses(addresses);
+
+        const preferred =
+          addresses.find((address) => address.isDefault) ??
+          addresses[0];
+
+        if (preferred) {
+          setSelectedAddressId(preferred.id);
+          setUsingNewAddress(false);
+          setForm((current) => ({
+            ...current,
+            cep: formatCep(preferred.cep),
+            street: preferred.street,
+            number: preferred.number,
+            complement: preferred.complement ?? "",
+            neighborhood: preferred.neighborhood,
+            city: preferred.city,
+            state: preferred.state,
+          }));
+        }
+      } catch (loadError) {
+        if (
+          loadError instanceof DOMException &&
+          loadError.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setAddressesError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Não foi possível carregar seus endereços."
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setAddressesLoading(false);
+        }
+      }
+    }
+
+    void loadSavedAddresses();
+
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
@@ -737,6 +877,25 @@ export default function CheckoutPage() {
       return;
     }
 
+    const addressFields: Array<keyof CheckoutForm> = [
+      "cep",
+      "street",
+      "number",
+      "complement",
+      "neighborhood",
+      "city",
+      "state",
+    ];
+
+    if (
+      customerAuthenticated &&
+      !usingNewAddress &&
+      addressFields.includes(field)
+    ) {
+      setSelectedAddressId(null);
+      setUsingNewAddress(true);
+    }
+
     const nextValue =
       field === "cep"
         ? formatCep(value)
@@ -795,6 +954,160 @@ export default function CheckoutPage() {
     if (errorMessage) {
       setErrorMessage("");
     }
+  }
+
+  function clearShippingSelection() {
+    setSelectedShipping(null);
+    setShippingOptions([]);
+    setShippingError("");
+    setShippingQuoteExpiresAt(null);
+
+    window.sessionStorage.removeItem(
+      "laico-shipping-selection"
+    );
+  }
+
+  function selectSavedAddress(
+    address: SavedAddress
+  ) {
+    if (orderId) {
+      return;
+    }
+
+    const cepChanged =
+      normalizeCep(form.cep) !==
+      normalizeCep(address.cep);
+
+    setSelectedAddressId(address.id);
+    setUsingNewAddress(false);
+    setCepError("");
+
+    lastLookedUpCepRef.current =
+      normalizeCep(address.cep);
+
+    setForm((current) => ({
+      ...current,
+      cep: formatCep(address.cep),
+      street: address.street,
+      number: address.number,
+      complement: address.complement ?? "",
+      neighborhood: address.neighborhood,
+      city: address.city,
+      state: address.state,
+    }));
+
+    if (cepChanged) {
+      clearShippingSelection();
+    }
+
+    if (errorMessage) {
+      setErrorMessage("");
+    }
+  }
+
+  function startNewAddress() {
+    if (orderId) {
+      return;
+    }
+
+    setSelectedAddressId(null);
+    setUsingNewAddress(true);
+    setCepError("");
+
+    lastLookedUpCepRef.current = "";
+
+    setForm((current) => ({
+      ...current,
+      cep: "",
+      street: "",
+      number: "",
+      complement: "",
+      neighborhood: "",
+      city: "",
+      state: "",
+    }));
+
+    clearShippingSelection();
+  }
+
+  async function saveNewAddressIfNecessary() {
+    if (
+      !customerAuthenticated ||
+      !usingNewAddress
+    ) {
+      return;
+    }
+
+    const normalizedAddress = {
+      cep: normalizeCep(form.cep),
+      state: form.state.trim().toUpperCase(),
+      city: form.city.trim().toLowerCase(),
+      neighborhood: form.neighborhood.trim().toLowerCase(),
+      street: form.street.trim().toLowerCase(),
+      number: form.number.trim().toLowerCase(),
+      complement: form.complement.trim().toLowerCase(),
+    };
+
+    const existingAddress = savedAddresses.find(
+      (address) =>
+        normalizeCep(address.cep) === normalizedAddress.cep &&
+        address.state.trim().toUpperCase() === normalizedAddress.state &&
+        address.city.trim().toLowerCase() === normalizedAddress.city &&
+        address.neighborhood.trim().toLowerCase() === normalizedAddress.neighborhood &&
+        address.street.trim().toLowerCase() === normalizedAddress.street &&
+        address.number.trim().toLowerCase() === normalizedAddress.number &&
+        (address.complement ?? "").trim().toLowerCase() ===
+          normalizedAddress.complement
+    );
+
+    if (existingAddress) {
+      setSelectedAddressId(existingAddress.id);
+      setUsingNewAddress(false);
+      return;
+    }
+
+    const response = await fetch(
+      "/api/account/addresses",
+      {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name:
+            savedAddresses.length === 0
+              ? "Endereço principal"
+              : `Endereço ${savedAddresses.length + 1}`,
+          cep: normalizedAddress.cep,
+          state: normalizedAddress.state,
+          city: form.city.trim(),
+          neighborhood: form.neighborhood.trim(),
+          street: form.street.trim(),
+          number: form.number.trim(),
+          complement: form.complement.trim(),
+          isDefault: savedAddresses.length === 0,
+        }),
+      }
+    );
+
+    const data = (await response.json().catch(
+      () => ({})
+    )) as AddressCreateResponse;
+
+    if (!response.ok || !data.success || !data.address) {
+      throw new Error(
+        data.error || "Não foi possível salvar o novo endereço."
+      );
+    }
+
+    setSavedAddresses((current) => [
+      ...current,
+      data.address as SavedAddress,
+    ]);
+    setSelectedAddressId(data.address.id);
+    setUsingNewAddress(false);
   }
 
   async function calculateShipping() {
@@ -1046,6 +1359,8 @@ export default function CheckoutPage() {
     let orderCreated = false;
 
     try {
+      await saveNewAddressIfNecessary();
+
       const checkoutResponse =
         await fetch(
           "/api/checkout",
@@ -1431,11 +1746,134 @@ export default function CheckoutPage() {
                     </h2>
 
                     <p className="text-[13px] text-neutral-500">
-                      Informe o endereço de
-                      entrega
+                      {customerAuthenticated
+                        ? "Escolha um endereço salvo ou cadastre outro"
+                        : "Informe o endereço de entrega"}
                     </p>
                   </div>
                 </div>
+
+                {addressesLoading && (
+                  <div className="mb-5 flex items-center gap-2 rounded-[8px] border border-[#e8dcc2] bg-[#faf9f6] px-4 py-3 text-[13px] text-neutral-600">
+                    <LoaderCircle
+                      size={16}
+                      className="animate-spin text-[#b98218]"
+                      aria-hidden="true"
+                    />
+                    Carregando seus endereços...
+                  </div>
+                )}
+
+                {!addressesLoading &&
+                  customerAuthenticated &&
+                  savedAddresses.length > 0 && (
+                    <fieldset className="mb-5 space-y-3">
+                      <legend className="mb-2 text-[13px] font-bold text-[#20170f]">
+                        Endereços cadastrados
+                      </legend>
+
+                      {savedAddresses.map((address) => {
+                        const selected =
+                          !usingNewAddress &&
+                          selectedAddressId === address.id;
+
+                        return (
+                          <button
+                            key={address.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            disabled={Boolean(orderId)}
+                            onClick={() => selectSavedAddress(address)}
+                            className={`flex w-full items-start gap-3 rounded-[8px] border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                              selected
+                                ? "border-[#b98218] bg-[#fff9eb] ring-1 ring-[#b98218]"
+                                : "border-[#e8dcc2] bg-white hover:border-[#d2b36f]"
+                            }`}
+                          >
+                            <span
+                              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                                selected
+                                  ? "border-[#b98218] bg-[#b98218] text-white"
+                                  : "border-[#b8aa96] bg-white"
+                              }`}
+                              aria-hidden="true"
+                            >
+                              {selected && <Check size={13} strokeWidth={3} />}
+                            </span>
+
+                            <span className="min-w-0 flex-1">
+                              <span className="flex flex-wrap items-center gap-2">
+                                <strong className="text-[13px] text-[#20170f]">
+                                  {address.name}
+                                </strong>
+
+                                {address.isDefault && (
+                                  <span className="rounded-full bg-[#efe2c2] px-2 py-0.5 text-[10px] font-bold text-[#9f6f14]">
+                                    Principal
+                                  </span>
+                                )}
+                              </span>
+
+                              <span className="mt-1 block text-[12px] leading-5 text-neutral-600">
+                                {address.street}, {address.number}
+                                {address.complement
+                                  ? `, ${address.complement}`
+                                  : ""}
+                                <br />
+                                {address.neighborhood} — {address.city}/{address.state}
+                                <br />
+                                CEP {formatCep(address.cep)}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={usingNewAddress}
+                        disabled={Boolean(orderId)}
+                        onClick={startNewAddress}
+                        className={`flex w-full items-center gap-3 rounded-[8px] border p-4 text-left text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          usingNewAddress
+                            ? "border-[#b98218] bg-[#fff9eb] text-[#9f6f14] ring-1 ring-[#b98218]"
+                            : "border-dashed border-[#d2b36f] bg-white text-[#b98218] hover:bg-[#fffaf0]"
+                        }`}
+                      >
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                            usingNewAddress
+                              ? "border-[#b98218] bg-[#b98218] text-white"
+                              : "border-[#b8aa96] bg-white"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {usingNewAddress && <Check size={13} strokeWidth={3} />}
+                        </span>
+                        Usar e salvar outro endereço
+                      </button>
+                    </fieldset>
+                  )}
+
+                {!addressesLoading &&
+                  customerAuthenticated &&
+                  savedAddresses.length === 0 && (
+                    <div className="mb-5 rounded-[8px] border border-[#e8dcc2] bg-[#faf9f6] px-4 py-3 text-[12px] leading-5 text-neutral-600">
+                      Você ainda não possui endereço cadastrado. O endereço
+                      informado nesta compra será salvo em sua conta.
+                    </div>
+                  )}
+
+                {addressesError && (
+                  <div
+                    role="alert"
+                    className="mb-5 rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-5 text-amber-800"
+                  >
+                    {addressesError} Você ainda pode finalizar como convidado.
+                  </div>
+                )}
 
                 <div className="space-y-4">
                   <label className="block">

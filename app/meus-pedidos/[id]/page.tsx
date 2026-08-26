@@ -1,13 +1,31 @@
 import {
+  CheckCircle2,
+  CircleDollarSign,
+  ClipboardList,
+  Clock3,
+  KeyRound,
+  LogOut,
+  MapPin,
+  Package,
+  Settings,
+  ShoppingBag,
+  Store,
+  Truck,
+  UserRound,
+} from "lucide-react";
+
+import {
   cookies,
 } from "next/headers";
+
+import Link from "next/link";
 
 import {
   notFound,
 } from "next/navigation";
 
+import AccountHeader from "@/components/account/AccountHeader";
 import Footer from "@/components/Footer";
-import Header from "@/components/Header/Header";
 
 import {
   getCustomerSession,
@@ -18,7 +36,11 @@ import {
   verifyOrderAccessToken,
 } from "@/lib/order-access";
 
-import { prisma } from "@/lib/prisma";
+import {
+  prisma,
+} from "@/lib/prisma";
+
+import styles from "./Pedido.module.css";
 
 export const dynamic =
   "force-dynamic";
@@ -49,21 +71,53 @@ const statusLabels: Record<
     "Saiu para entrega",
 
   DELIVERED:
-    "Entregue",
+    "Pedido entregue",
 
   CANCELED:
-    "Cancelado",
+    "Pedido cancelado",
 
   REFUNDED:
-    "Reembolsado",
+    "Pagamento reembolsado",
 
   RETURNED:
-    "Devolvido",
+    "Pedido devolvido",
+};
+
+const paymentStatusLabels: Record<
+  string,
+  string
+> = {
+  PENDING:
+    "Pagamento pendente",
+
+  APPROVED:
+    "Pagamento aprovado",
+
+  REJECTED:
+    "Pagamento recusado",
+
+  CANCELED:
+    "Pagamento cancelado",
+
+  REFUNDED:
+    "Pagamento reembolsado",
+};
+
+const normalStatusOrder: Record<
+  string,
+  number
+> = {
+  PENDING: 0,
+  PAID: 1,
+  PROCESSING: 2,
+  SHIPPED: 3,
+  OUT_FOR_DELIVERY: 3,
+  DELIVERED: 4,
 };
 
 function isValidOrderId(
   orderId: string
-): boolean {
+) {
   return /^[a-zA-Z0-9_-]{10,100}$/.test(
     orderId
   );
@@ -71,10 +125,19 @@ function isValidOrderId(
 
 function formatPrice(
   value: unknown
-): string {
-  return Number(
-    value
-  ).toLocaleString(
+) {
+  const number =
+    Number(value);
+
+  if (
+    !Number.isFinite(
+      number
+    )
+  ) {
+    return "R$ 0,00";
+  }
+
+  return number.toLocaleString(
     "pt-BR",
     {
       style: "currency",
@@ -85,7 +148,7 @@ function formatPrice(
 
 function formatDate(
   date: Date
-): string {
+) {
   return new Intl.DateTimeFormat(
     "pt-BR",
     {
@@ -97,7 +160,7 @@ function formatDate(
 
 function getSafeExternalUrl(
   value: string | null
-): string | null {
+) {
   if (!value) {
     return null;
   }
@@ -107,8 +170,10 @@ function getSafeExternalUrl(
       new URL(value);
 
     if (
-      url.protocol !== "https:" &&
-      url.protocol !== "http:"
+      url.protocol !==
+        "https:" &&
+      url.protocol !==
+        "http:"
     ) {
       return null;
     }
@@ -119,20 +184,71 @@ function getSafeExternalUrl(
   }
 }
 
+function getPaymentMethodLabel(
+  method:
+    | string
+    | null
+    | undefined
+) {
+  if (!method) {
+    return "Não informado";
+  }
+
+  const normalized =
+    method.toLowerCase();
+
+  const labels: Record<
+    string,
+    string
+  > = {
+    pix: "PIX",
+    credit_card:
+      "Cartão de crédito",
+    debit_card:
+      "Cartão de débito",
+    ticket:
+      "Boleto bancário",
+    bolbradesco:
+      "Boleto bancário",
+    account_money:
+      "Saldo Mercado Pago",
+  };
+
+  return (
+    labels[normalized] ??
+    method
+  );
+}
+
+function getHistoryDate(
+  history: Array<{
+    status: string;
+    createdAt: Date;
+  }>,
+  statuses: string[]
+) {
+  const item =
+    [...history]
+      .reverse()
+      .find(
+        (historyItem) =>
+          statuses.includes(
+            historyItem.status
+          )
+      );
+
+  return item
+    ? formatDate(
+        item.createdAt
+      )
+    : null;
+}
+
 export default async function UserOrderDetailsPage({
   params,
 }: Props) {
   const { id } =
     await params;
-
-  /*
-   * =====================================================
-   * ID
-   * =====================================================
-   *
-   * ID inválido e acesso não autorizado possuem
-   * exatamente o mesmo comportamento.
-   */
 
   if (
     !id ||
@@ -143,7 +259,7 @@ export default async function UserOrderDetailsPage({
 
   /*
    * =====================================================
-   * SESSÃO DO CLIENTE
+   * AUTORIZAÇÃO
    * =====================================================
    */
 
@@ -154,35 +270,10 @@ export default async function UserOrderDetailsPage({
     | string
     | null = null;
 
-  /*
-   * =====================================================
-   * CLIENTE LOGADO
-   * =====================================================
-   *
-   * Se existe uma sessão válida, somente o userId
-   * daquela sessão poderá ser utilizado.
-   *
-   * IMPORTANTE:
-   *
-   * Não fazemos fallback para token GUEST caso
-   * o cliente esteja logado.
-   */
-
-  if (
-    customerSession
-  ) {
+  if (customerSession) {
     authorizedUserId =
       customerSession.userId;
   } else {
-    /*
-     * ===================================================
-     * VISITANTE
-     * ===================================================
-     *
-     * Sem sessão autenticada, exigimos o token
-     * secreto exclusivo daquele pedido.
-     */
-
     const cookieStore =
       await cookies();
 
@@ -192,10 +283,6 @@ export default async function UserOrderDetailsPage({
           id
         )
       )?.value;
-
-    /*
-     * Saber apenas cms... nunca é suficiente.
-     */
 
     if (!accessToken) {
       notFound();
@@ -212,7 +299,8 @@ export default async function UserOrderDetailsPage({
 
     if (
       !access ||
-      access.orderId !== id
+      access.orderId !==
+        id
     ) {
       notFound();
     }
@@ -221,27 +309,14 @@ export default async function UserOrderDetailsPage({
       access.userId;
   }
 
-  /*
-   * =====================================================
-   * DEFESA FINAL
-   * =====================================================
-   */
-
-  if (
-    !authorizedUserId
-  ) {
+  if (!authorizedUserId) {
     notFound();
   }
 
   /*
    * =====================================================
-   * CONSULTA SEGURA
+   * PEDIDO
    * =====================================================
-   *
-   * A autorização faz parte do WHERE.
-   *
-   * Isso é melhor do que carregar o pedido inteiro
-   * e só depois descobrir que pertence a outra pessoa.
    */
 
   const order =
@@ -254,11 +329,29 @@ export default async function UserOrderDetailsPage({
       },
 
       select: {
-        id: true,
-        userId: true,
-        status: true,
-        total: true,
-        createdAt: true,
+        id:
+          true,
+
+        userId:
+          true,
+
+        status:
+          true,
+
+        subtotal:
+          true,
+
+        shipping:
+          true,
+
+        discount:
+          true,
+
+        total:
+          true,
+
+        createdAt:
+          true,
 
         trackingCode:
           true,
@@ -269,14 +362,82 @@ export default async function UserOrderDetailsPage({
         carrier:
           true,
 
+        user: {
+          select: {
+            name:
+              true,
+
+            email:
+              true,
+          },
+        },
+
+        address: {
+          select: {
+            name:
+              true,
+
+            cep:
+              true,
+
+            state:
+              true,
+
+            city:
+              true,
+
+            neighborhood:
+              true,
+
+            street:
+              true,
+
+            number:
+              true,
+
+            complement:
+              true,
+          },
+        },
+
+        payment: {
+          select: {
+            status:
+              true,
+
+            provider:
+              true,
+
+            paymentMethod:
+              true,
+
+            createdAt:
+              true,
+
+            updatedAt:
+              true,
+          },
+        },
+
         items: {
           select: {
-            id: true,
-            name: true,
-            image: true,
-            price: true,
-            quantity: true,
-            createdAt: true,
+            id:
+              true,
+
+            name:
+              true,
+
+            image:
+              true,
+
+            price:
+              true,
+
+            quantity:
+              true,
+
+            createdAt:
+              true,
           },
 
           orderBy: {
@@ -287,10 +448,20 @@ export default async function UserOrderDetailsPage({
 
         history: {
           select: {
-            id: true,
-            title: true,
-            message: true,
-            createdAt: true,
+            id:
+              true,
+
+            status:
+              true,
+
+            title:
+              true,
+
+            message:
+              true,
+
+            createdAt:
+              true,
           },
 
           orderBy: {
@@ -301,24 +472,8 @@ export default async function UserOrderDetailsPage({
       },
     });
 
-  /*
-   * Não diferenciamos:
-   *
-   * - pedido inexistente;
-   * - pedido de outro usuário;
-   * - token inválido;
-   * - sessão inválida.
-   */
-
-  if (!order) {
-    notFound();
-  }
-
-  /*
-   * Defesa em profundidade.
-   */
-
   if (
+    !order ||
     order.userId !==
       authorizedUserId
   ) {
@@ -330,221 +485,656 @@ export default async function UserOrderDetailsPage({
       order.trackingUrl
     );
 
-  return (
-    <main className="min-h-screen bg-[#faf9f6]">
-      <Header />
+  const exceptionalStatus =
+    [
+      "CANCELED",
+      "REFUNDED",
+      "RETURNED",
+    ].includes(
+      order.status
+    );
 
-      <section className="mx-auto max-w-[1100px] px-6 py-10">
-        <div className="mb-8">
-          <h1 className="text-[34px] font-extrabold text-[#20170f]">
-            Acompanhar pedido
-          </h1>
+  const currentStep =
+    normalStatusOrder[
+      order.status
+    ] ?? 0;
 
-          <p className="text-neutral-600">
-            Pedido #
-            {order.id
-              .slice(
-                0,
-                8
+  const orderCode =
+    `LAICO-${order.id
+      .slice(0, 8)
+      .toUpperCase()}`;
+
+  const progressSteps = [
+    {
+      key: "PENDING",
+      title: "Recebido",
+      icon: Clock3,
+      date:
+        formatDate(
+          order.createdAt
+        ),
+    },
+    {
+      key: "PAID",
+      title: "Pago",
+      icon:
+        CircleDollarSign,
+      date:
+        getHistoryDate(
+          order.history,
+          [
+            "PAID",
+          ]
+        ) ??
+        (
+          order.payment
+            ?.status ===
+          "APPROVED"
+            ? formatDate(
+                order.payment.updatedAt
               )
-              .toUpperCase()}{" "}
-            ·{" "}
-            {formatDate(
-              order.createdAt
-            )}
+            : null
+        ),
+    },
+    {
+      key: "PROCESSING",
+      title: "Em preparação",
+      icon:
+        ClipboardList,
+      date:
+        getHistoryDate(
+          order.history,
+          [
+            "PROCESSING",
+          ]
+        ),
+    },
+    {
+      key: "SHIPPED",
+      title: "Enviado",
+      icon: Truck,
+      date:
+        getHistoryDate(
+          order.history,
+          [
+            "SHIPPED",
+            "OUT_FOR_DELIVERY",
+          ]
+        ),
+    },
+    {
+      key: "DELIVERED",
+      title: "Entregue",
+      icon:
+        CheckCircle2,
+      date:
+        getHistoryDate(
+          order.history,
+          [
+            "DELIVERED",
+          ]
+        ),
+    },
+  ];
+
+  return (
+    <main className={styles.page}>
+      <AccountHeader />
+
+      <div className={styles.container}>
+        {/* SAUDAÇÃO */}
+
+        <div className={styles.welcome}>
+          <p>
+            Olá{" "}
+
+            <strong>
+              {order.user.name}!
+            </strong>{" "}
+
+            Acompanhe os detalhes e o andamento do seu pedido.
           </p>
+
+          <Link
+            href="/catalogo"
+            className={styles.storeButton}
+          >
+            <Store size={17} />
+
+            Voltar para a loja
+          </Link>
         </div>
 
-        {/* STATUS */}
+        <div className={styles.layout}>
+          {/* MENU LATERAL */}
 
-        <section className="mb-6 rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm text-neutral-500">
-                Status atual
-              </p>
+          <aside className={styles.sidebar}>
+            <nav className={styles.sidebarNavigation}>
+              <Link
+                href="/minha-conta#pedidos"
+                className={`${styles.sidebarLink} ${styles.sidebarLinkActive}`}
+              >
+                <Package size={18} />
 
-              <h2 className="text-[26px] font-extrabold text-[#b98218]">
-                {statusLabels[
-                  order.status
-                ] ||
-                  order.status}
-              </h2>
-            </div>
+                Meus pedidos
+              </Link>
 
-            <div className="md:text-right">
-              <p className="text-sm text-neutral-500">
-                Total
-              </p>
+              <Link
+                href="/minha-conta#dados-pessoais"
+                className={styles.sidebarLink}
+              >
+                <UserRound size={18} />
 
-              <strong className="text-[24px] text-[#20170f]">
-                {formatPrice(
-                  order.total
-                )}
-              </strong>
-            </div>
-          </div>
+                Dados pessoais
+              </Link>
 
-          {/* RASTREAMENTO */}
+              <Link
+                href="/minha-conta#enderecos"
+                className={styles.sidebarLink}
+              >
+                <MapPin size={18} />
 
-          {order.trackingCode && (
-            <div className="mt-5 rounded-xl bg-[#faf9f6] p-4">
-              <p className="text-sm">
+                Endereço de entrega
+              </Link>
+
+              <Link
+                href="/minha-conta#seguranca"
+                className={styles.sidebarLink}
+              >
+                <KeyRound size={18} />
+
+                Alterar senha
+              </Link>
+
+              <Link
+                href="/minha-conta#configuracoes"
+                className={styles.sidebarLink}
+              >
+                <Settings size={18} />
+
+                Configurações
+              </Link>
+
+              <Link
+                href="/minha-conta#configuracoes"
+                className={`${styles.sidebarLink} ${styles.logoutLink}`}
+              >
+                <LogOut size={18} />
+
+                Sair
+              </Link>
+            </nav>
+          </aside>
+
+          {/* CONTEÚDO */}
+
+          <div className={styles.content}>
+            {/* PROGRESSO */}
+
+            <section className={styles.statusSection}>
+              <div className={styles.statusHeader}>
                 <strong>
-                  Transportadora:
-                </strong>{" "}
-                {order.carrier ||
-                  "-"}
-              </p>
+                  Status do pedido
+                </strong>
 
-              <p className="mt-1 text-sm">
-                <strong>
-                  Código de rastreio:
-                </strong>{" "}
-                {
-                  order.trackingCode
-                }
-              </p>
+                <span>
+                  {orderCode}
+                </span>
+              </div>
 
-              {safeTrackingUrl && (
-                <a
-                  href={
-                    safeTrackingUrl
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex rounded-xl bg-[#20170f] px-5 py-3 text-sm font-bold text-white"
-                >
-                  Abrir rastreamento
-                </a>
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* HISTÓRICO */}
-
-        <section className="mb-6 rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
-          <h2 className="mb-6 text-[24px] font-extrabold text-[#20170f]">
-            Linha do tempo do pedido
-          </h2>
-
-          <div className="space-y-5">
-            {order.history.map(
-              (
-                historyItem,
-                index
-              ) => (
+              {exceptionalStatus && (
                 <div
-                  key={
-                    historyItem.id
-                  }
-                  className="flex gap-4"
+                  className={`${styles.exceptionalStatus} ${
+                    order.status ===
+                    "CANCELED"
+                      ? styles.exceptionalCanceled
+                      : order.status ===
+                          "REFUNDED"
+                        ? styles.exceptionalRefunded
+                        : styles.exceptionalReturned
+                  }`}
                 >
-                  <div className="flex flex-col items-center">
-                    <div className="h-5 w-5 rounded-full bg-[#b98218]" />
+                  <strong>
+                    {statusLabels[
+                      order.status
+                    ]}
+                  </strong>
 
-                    {index !==
-                      order
-                        .history
-                        .length -
-                        1 && (
-                      <div className="h-full min-h-[48px] w-[2px] bg-[#e8dcc2]" />
-                    )}
-                  </div>
+                  <span>
+                    Consulte o histórico abaixo para mais informações.
+                  </span>
+                </div>
+              )}
 
-                  <div className="pb-4">
-                    <strong className="text-[#20170f]">
-                      {
-                        historyItem.title
-                      }
+              <div className={styles.progress}>
+                {progressSteps.map(
+                  (
+                    step,
+                    index
+                  ) => {
+                    const Icon =
+                      step.icon;
+
+                    const completed =
+                      !exceptionalStatus &&
+                      index <=
+                        currentStep;
+
+                    const current =
+                      !exceptionalStatus &&
+                      index ===
+                        currentStep;
+
+                    return (
+                      <div
+                        key={
+                          step.key
+                        }
+                        className={`${styles.progressStep} ${
+                          completed
+                            ? styles.progressStepCompleted
+                            : ""
+                        } ${
+                          current
+                            ? styles.progressStepCurrent
+                            : ""
+                        }`}
+                      >
+                        <div className={styles.progressIcon}>
+                          <Icon size={24} />
+                        </div>
+
+                        <strong>
+                          {
+                            step.title
+                          }
+                        </strong>
+
+                        <span>
+                          {step.date ??
+                            "—"}
+                        </span>
+
+                        {index <
+                          progressSteps.length -
+                            1 && (
+                          <div
+                            className={`${styles.progressLine} ${
+                              !exceptionalStatus &&
+                              index <
+                                currentStep
+                                ? styles.progressLineCompleted
+                                : ""
+                            }`}
+                          />
+                        )}
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            </section>
+
+            {/* DUAS COLUNAS */}
+
+            <div className={styles.detailsGrid}>
+              <div className={styles.detailsColumn}>
+                {/* PAGAMENTO */}
+
+                <section className={styles.card}>
+                  <h2>
+                    Forma de pagamento
+                  </h2>
+
+                  <div className={styles.cardContent}>
+                    <strong>
+                      {getPaymentMethodLabel(
+                        order.payment
+                          ?.paymentMethod
+                      )}
                     </strong>
 
-                    {historyItem.message && (
-                      <p className="mt-1 text-sm text-neutral-700">
+                    <span
+                      className={`${styles.paymentStatus} ${
+                        order.payment
+                          ?.status ===
+                        "APPROVED"
+                          ? styles.paymentApproved
+                          : order.payment
+                                ?.status ===
+                              "REJECTED" ||
+                            order.payment
+                                ?.status ===
+                              "CANCELED"
+                            ? styles.paymentRejected
+                            : order.payment
+                                  ?.status ===
+                                "REFUNDED"
+                              ? styles.paymentRefunded
+                              : styles.paymentPending
+                      }`}
+                    >
+                      {order.payment
+                        ? paymentStatusLabels[
+                            order
+                              .payment
+                              .status
+                          ] ??
+                          order.payment
+                            .status
+                        : "Pagamento não encontrado"}
+                    </span>
+                  </div>
+                </section>
+
+                {/* ENDEREÇO */}
+
+                <section className={styles.card}>
+                  <h2>
+                    Endereço de entrega
+                  </h2>
+
+                  <div className={styles.cardContent}>
+                    {order.address ? (
+                      <address className={styles.address}>
+                        <strong>
+                          Destinatário:
+                        </strong>{" "}
+
                         {
-                          historyItem.message
+                          order.address.name
                         }
+
+                        <br />
+
+                        <strong>
+                          Endereço:
+                        </strong>{" "}
+
+                        {
+                          order.address.street
+                        }
+                        ,{" "}
+                        {
+                          order.address.number
+                        }
+
+                        {order.address
+                          .complement
+                          ? `, ${order.address.complement}`
+                          : ""}
+
+                        <br />
+
+                        {
+                          order.address.neighborhood
+                        }
+                        ,{" "}
+                        {
+                          order.address.city
+                        }
+                        -
+                        {
+                          order.address.state
+                        }
+
+                        <br />
+
+                        <strong>
+                          CEP:
+                        </strong>{" "}
+
+                        {
+                          order.address.cep
+                        }
+                      </address>
+                    ) : (
+                      <p>
+                        Endereço não disponível.
                       </p>
                     )}
+                  </div>
+                </section>
 
-                    <p className="mt-1 text-xs text-neutral-400">
-                      {formatDate(
-                        historyItem.createdAt
+                {/* FRETE */}
+
+                <section className={styles.card}>
+                  <h2>
+                    Frete
+                  </h2>
+
+                  <div className={styles.cardContent}>
+                    <p>
+                      <strong>
+                        Transportadora:
+                      </strong>{" "}
+
+                      {order.carrier ||
+                        "A definir"}
+                    </p>
+
+                    <p>
+                      <strong>
+                        Valor:
+                      </strong>{" "}
+
+                      {formatPrice(
+                        order.shipping
                       )}
                     </p>
-                  </div>
-                </div>
-              )
-            )}
 
-            {order.history
-              .length ===
-              0 && (
-              <p className="text-sm text-neutral-500">
-                Seu pedido ainda
-                não possui
-                atualizações.
-              </p>
-            )}
-          </div>
-        </section>
+                    {order.trackingCode && (
+                      <>
+                        <p>
+                          <strong>
+                            Código de rastreio:
+                          </strong>{" "}
 
-        {/* PRODUTOS */}
+                          {
+                            order.trackingCode
+                          }
+                        </p>
 
-        <section className="rounded-2xl border border-[#e8dcc2] bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-[24px] font-extrabold text-[#20170f]">
-            Produtos do pedido
-          </h2>
+                        {safeTrackingUrl && (
+                          <a
+                            href={
+                              safeTrackingUrl
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={styles.trackingButton}
+                          >
+                            <Truck size={16} />
 
-          <div className="divide-y divide-[#eee2cc]">
-            {order.items.map(
-              (item) => (
-                <div
-                  key={
-                    item.id
-                  }
-                  className="flex items-center gap-4 py-4"
-                >
-                  <img
-                    src={
-                      item.image
-                    }
-                    alt={
-                      item.name
-                    }
-                    className="h-16 w-16 rounded-xl border object-contain"
-                  />
-
-                  <div className="min-w-0 flex-1">
-                    <strong className="block truncate">
-                      {
-                        item.name
-                      }
-                    </strong>
-
-                    <p className="text-sm text-neutral-500">
-                      Quantidade:{" "}
-                      {
-                        item.quantity
-                      }
-                    </p>
-                  </div>
-
-                  <strong className="shrink-0">
-                    {formatPrice(
-                      Number(
-                        item.price
-                      ) *
-                        item.quantity
+                            Acompanhar entrega
+                          </a>
+                        )}
+                      </>
                     )}
-                  </strong>
+                  </div>
+                </section>
+
+                {/* HISTÓRICO */}
+
+                <section className={styles.card}>
+                  <h2>
+                    Histórico do pedido
+                  </h2>
+
+                  <div className={styles.history}>
+                    {order.history.map(
+                      (
+                        historyItem
+                      ) => (
+                        <div
+                          key={
+                            historyItem.id
+                          }
+                          className={styles.historyItem}
+                        >
+                          <span className={styles.historyDot} />
+
+                          <div>
+                            <strong>
+                              {
+                                historyItem.title
+                              }
+                            </strong>
+
+                            {historyItem.message && (
+                              <p>
+                                {
+                                  historyItem.message
+                                }
+                              </p>
+                            )}
+
+                            <small>
+                              {formatDate(
+                                historyItem.createdAt
+                              )}
+                            </small>
+                          </div>
+                        </div>
+                      )
+                    )}
+
+                    {order.history.length ===
+                      0 && (
+                      <p className={styles.emptyHistory}>
+                        O pedido ainda não possui atualizações.
+                      </p>
+                    )}
+                  </div>
+                </section>
+              </div>
+
+              {/* RESUMO */}
+
+              <section className={styles.summaryCard}>
+                <h2>
+                  Resumo do pedido
+                </h2>
+
+                <div className={styles.products}>
+                  {order.items.map(
+                    (
+                      item
+                    ) => (
+                      <article
+                        key={
+                          item.id
+                        }
+                        className={styles.product}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={
+                            item.image
+                          }
+                          alt={
+                            item.name
+                          }
+                        />
+
+                        <div className={styles.productInformation}>
+                          <strong>
+                            {
+                              item.name
+                            }
+                          </strong>
+
+                          <span>
+                            {formatPrice(
+                              item.price
+                            )}
+                          </span>
+                        </div>
+
+                        <div className={styles.productFooter}>
+                          <span>
+                            Quantidade:{" "}
+
+                            <strong>
+                              {
+                                item.quantity
+                              }
+                            </strong>
+                          </span>
+
+                          <strong>
+                            {formatPrice(
+                              Number(
+                                item.price
+                              ) *
+                                item.quantity
+                            )}
+                          </strong>
+                        </div>
+                      </article>
+                    )
+                  )}
                 </div>
-              )
-            )}
+
+                <div className={styles.totals}>
+                  <div>
+                    <span>
+                      Total dos itens
+                    </span>
+
+                    <strong>
+                      {formatPrice(
+                        order.subtotal
+                      )}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>
+                      Frete
+                    </span>
+
+                    <strong>
+                      {formatPrice(
+                        order.shipping
+                      )}
+                    </strong>
+                  </div>
+
+                  {Number(
+                    order.discount
+                  ) > 0 && (
+                    <div>
+                      <span>
+                        Desconto
+                      </span>
+
+                      <strong className={styles.discount}>
+                        -
+                        {formatPrice(
+                          order.discount
+                        )}
+                      </strong>
+                    </div>
+                  )}
+
+                  <div className={styles.total}>
+                    <span>
+                      Total
+                    </span>
+
+                    <strong>
+                      {formatPrice(
+                        order.total
+                      )}
+                    </strong>
+                  </div>
+                </div>
+              </section>
+            </div>
           </div>
-        </section>
-      </section>
+        </div>
+      </div>
 
       <Footer />
     </main>
